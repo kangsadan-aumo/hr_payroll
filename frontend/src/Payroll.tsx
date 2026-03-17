@@ -65,7 +65,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 params: { month: currentMonth, year: currentYear }
             });
             setPayrollData(res.data.map((r: any) => ({ ...r, status: r.status || 'draft' })));
-            
+
             // fetch settings for company name
             try {
                 const setRes = await axios.get(`${API}/settings`);
@@ -73,7 +73,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                     setCompanyName(setRes.data.company_name);
                 }
             } catch (e) { console.log('No settings found'); }
-            
+
         } catch (error) {
             message.error('ไม่สามารถเรียกข้อมูลบัญชีเงินเดือนได้');
         } finally {
@@ -164,7 +164,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
         if (!printRef.current) return;
         const printWindow = window.open('', '', 'width=800,height=600');
         if (!printWindow) return;
-        
+
         let styles = '';
         document.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => {
             styles += node.outerHTML;
@@ -205,14 +205,14 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
             formatCurrencyNum(r.deductions.tax), formatCurrencyNum(r.deductions.socialSecurity),
             formatCurrencyNum(calculateNetSalary(r)), r.status === 'paid' ? 'จ่ายแล้ว' : (r.isPreview ? 'ร่าง' : 'รอตรวจสอบ')
         ]);
-        
+
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-        
+
         // Auto-size columns slightly
         ws['!cols'] = Array(12).fill({ wch: 15 });
         ws['!cols'][1] = { wch: 25 }; // Name
-        
+
         XLSX.utils.book_append_sheet(wb, ws, "Payroll");
         XLSX.writeFile(wb, `payroll_${currentYear}_${String(currentMonth).padStart(2, '0')}.xlsx`);
         message.success('ดาวน์โหลด Excel สำเร็จ');
@@ -533,9 +533,9 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                                         </Select>
                                     </Col>
                                     <Col span={9}>
-                                        <Button 
-                                            type="primary" 
-                                            ghost 
+                                        <Button
+                                            type="primary"
+                                            ghost
                                             style={{ width: '100%' }}
                                             onClick={() => {
                                                 const h = otHelperHours || 0;

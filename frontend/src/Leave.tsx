@@ -367,7 +367,14 @@ export const Leave: React.FC = () => {
             >
                 <Form form={form} layout="vertical" onFinish={handleRequestSubmit}>
                     <Form.Item name="employee_id" label="พนักงาน" rules={[{ required: true, message: 'กรุณาเลือกพนักงาน' }]}>
-                        <Select showSearch placeholder="ระบุพนักงาน" filterOption={(input, option) => (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())}>
+                        <Select 
+                            showSearch 
+                            placeholder="ระบุพนักงาน" 
+                            optionFilterProp="children"
+                            filterOption={(input, option) => 
+                                String(option?.children || '').toLowerCase().includes(input.toLowerCase())
+                            }
+                        >
                             {employees.map(e => <Option key={e.id} value={e.id}>{e.name} ({e.department})</Option>)}
                         </Select>
                     </Form.Item>

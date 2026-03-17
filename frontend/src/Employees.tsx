@@ -2,20 +2,24 @@ import React, { useState, useEffect } from 'react';
 import {
     Typography, Card, Table, Input, Button, Space, Tag, Avatar, Tooltip, Drawer,
     Form, Select, DatePicker, message, Popconfirm, Row, Col, Modal, Upload, Alert,
-    Divider, Badge
+    Divider, Badge, Tabs, Spin
 } from 'antd';
 import type { TableProps } from 'antd';
 import {
     SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined,
-    ExportOutlined, CheckCircleOutlined, CloseCircleOutlined, ImportOutlined,
-    DownloadOutlined, WarningOutlined, FileTextOutlined, ProfileOutlined
+    CheckCircleOutlined, CloseCircleOutlined, ImportOutlined,
+    DownloadOutlined, WarningOutlined, FileTextOutlined, ProfileOutlined,
+    SecurityScanOutlined, UploadOutlined, FileExcelOutlined
 } from '@ant-design/icons';
+const { TextArea } = Input;
+const { Option } = Select;
+const { Title, Text } = Typography;
+const { TabPane } = Tabs;
 import dayjs from 'dayjs';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 
-const { Title, Text } = Typography;
-const { Option } = Select;
 const { Dragger } = Upload;
 
 const API = 'http://localhost:5000/api';
@@ -31,6 +35,7 @@ interface Employee {
     phone: string;
     email: string;
     baseSalary?: number;
+    id_number?: string;
 }
 
 interface CsvRow {
@@ -45,6 +50,7 @@ interface CsvRow {
     join_date: string;
     status: string;
     base_salary: string;
+    id_number: string;
     _valid: boolean;
     _error?: string;
 }
@@ -74,6 +80,8 @@ const CSV_HEADER_MAP: Record<string, string> = {
     'join_date': 'join_date',
     'status': 'status',
     'base_salary': 'base_salary',
+    'เลขบัตรประชาชน': 'id_number',
+    'id_number': 'id_number',
 };
 
 const TEMPLATE_CSV = `รหัสพนักงาน,ชื่อ,นามสกุล,แผนก,ตำแหน่ง,อีเมล,เบอร์โทรศัพท์,วันที่เริ่มงาน,สถานะ,เงินเดือนพื้นฐาน
@@ -93,6 +101,15 @@ export const Employees: React.FC = () => {
     const [importModalOpen, setImportModalOpen] = useState(false);
     const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
     const [importing, setImporting] = useState(false);
+
+    // HR Admin States
+    const [adminDrawerVisible, setAdminDrawerVisible] = useState(false);
+    const [selectedEmployeeForAdmin, setSelectedEmployeeForAdmin] = useState<Employee | null>(null);
+    const [documents, setDocuments] = useState<any[]>([]);
+    const [disciplinaryRecords, setDisciplinaryRecords] = useState<any[]>([]);
+    const [adminLoading, setAdminLoading] = useState(false);
+    const [adminForm] = Form.useForm();
+    const [disciplineForm] = Form.useForm();
 
     // Leave Quota states
     const [quotaModalOpen, setQuotaModalOpen] = useState(false);
@@ -118,54 +135,101 @@ export const Employees: React.FC = () => {
 
     useEffect(() => { fetchData(); }, []);
 
-    // ── CSV Parser ──
-    const parseCsvFile = (file: File) => {
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            encoding: 'UTF-8',
-            complete: (result) => {
-                const rows: CsvRow[] = result.data.map((raw: any, i: number) => {
-                    const mapped: any = { _rowIndex: i + 2 };
-                    // Map headers (Thai or English)
-                    Object.entries(raw).forEach(([key, val]) => {
-                        const trimKey = key.trim();
-                        const field = CSV_HEADER_MAP[trimKey];
-                        if (field && !mapped[field]) mapped[field] = String(val || '').trim();
+    // ── File Parser (CSV/Excel) ──
+    const handleFileParse = (file: File) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const data = e.target?.result;
+            let rows: any[] = [];
+            
+            if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+                
+                if (jsonData.length > 1) {
+                    const headers = jsonData[0].map(h => String(h || '').trim());
+                    rows = jsonData.slice(1).map((row, i) => {
+                        const mapped: any = { _rowIndex: i + 2 };
+                        headers.forEach((h, idx) => {
+                            const field = CSV_HEADER_MAP[h];
+                            if (field) mapped[field] = String(row[idx] || '').trim();
+                        });
+                        return mapped;
                     });
-
-                    // Normalize status
-                    const statusRaw = (mapped.status || '').toLowerCase();
-                    if (statusRaw.includes('ใช้งาน') || statusRaw === 'active' || statusRaw === '1') {
-                        mapped.status = 'active';
-                    } else if (statusRaw.includes('ลาออก') || statusRaw === 'inactive' || statusRaw === '0') {
-                        mapped.status = 'inactive';
-                    } else {
-                        mapped.status = 'active'; // default
-                    }
-
-                    // Validation
-                    let error = '';
-                    if (!mapped.first_name) error = 'ไม่มีชื่อ';
-                    else if (!mapped.join_date) error = 'ไม่มีวันที่เริ่มงาน';
-                    else if (!dayjs(mapped.join_date).isValid()) error = `วันที่ไม่ถูกต้อง: ${mapped.join_date}`;
-
-                    return {
-                        ...mapped,
-                        _rowIndex: i + 2,
-                        _valid: !error,
-                        _error: error,
-                    } as CsvRow;
-                });
-                setCsvRows(rows);
-                if (rows.length > 0) {
-                    message.success(`อ่านไฟล์ CSV สำเร็จ: ${rows.length} รายการ`);
-                } else {
-                    message.warning('ไม่พบข้อมูลในไฟล์ หรือรูปแบบ header ไม่ถูกต้อง');
                 }
-            },
-            error: () => message.error('ไม่สามารถอ่านไฟล์ CSV ได้'),
-        });
+            } else {
+                // Papa Parse for CSV
+                const result = Papa.parse(data as string, { header: true, skipEmptyLines: true });
+                rows = result.data.map((raw: any, i: number) => {
+                    const mapped: any = { _rowIndex: i + 2 };
+                    Object.entries(raw).forEach(([key, val]) => {
+                        const field = CSV_HEADER_MAP[key.trim()];
+                        if (field) mapped[field] = String(val || '').trim();
+                    });
+                    return mapped;
+                });
+            }
+
+            // Common normalization for both CSV and Excel
+            const processedRows = rows.map((mapped) => {
+                const statusRaw = (mapped.status || '').toLowerCase();
+                if (statusRaw.includes('ใช้งาน') || statusRaw === 'active' || statusRaw === '1') {
+                    mapped.status = 'active';
+                } else if (statusRaw.includes('ลาออก') || statusRaw === 'inactive' || statusRaw === '0') {
+                    mapped.status = 'inactive';
+                } else {
+                    mapped.status = 'active';
+                }
+
+                let error = '';
+                if (!mapped.first_name) error = 'ไม่มีชื่อ';
+                else if (!mapped.join_date) error = 'ไม่มีวันที่เริ่มงาน';
+                else if (!dayjs(mapped.join_date).isValid()) error = `วันที่ไม่ถูกต้อง: ${mapped.join_date}`;
+
+                return {
+                    ...mapped,
+                    _valid: !error,
+                    _error: error,
+                } as CsvRow;
+            });
+
+            setCsvRows(processedRows);
+            if (processedRows.length > 0) {
+                message.success(`อ่านไฟล์สำเร็จ: ${processedRows.length} รายการ`);
+            } else {
+                message.warning('ไม่พบข้อมูลที่ถูกต้องในไฟล์');
+            }
+        };
+
+        if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+            reader.readAsArrayBuffer(file);
+        } else {
+            reader.readAsText(file, 'UTF-8');
+        }
+        return false;
+    };
+
+    const handleExportExcel = () => {
+        const exportData = employees.map(e => ({
+            'รหัสพนักงาน': e.employee_code,
+            'ชื่อ': e.name.split(' ')[0],
+            'นามสกุล': e.name.split(' ').slice(1).join(' '),
+            'แผนก': e.department,
+            'ตำแหน่ง': e.position,
+            'อีเมล': e.email,
+            'เบอร์โทรศัพท์': e.phone,
+            'วันที่เริ่มงาน': e.joinDate,
+            'สถานะ': e.status === 'active' ? 'ใช้งาน' : 'ลาออก',
+            'เงินเดือน': e.baseSalary,
+            'เลขบัตรประชาชน': e.id_number
+        }));
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Employees");
+        XLSX.writeFile(workbook, `Employee_Data_${dayjs().format('YYYY-MM-DD')}.xlsx`);
+        message.success('Export Excel สำเร็จ');
     };
 
     const handleImportConfirm = async () => {
@@ -187,6 +251,7 @@ export const Employees: React.FC = () => {
                 join_date: dayjs(r.join_date).format('YYYY-MM-DD'),
                 status: r.status || 'active',
                 base_salary: parseFloat(r.base_salary) || 0,
+                id_number: r.id_number || null,
             }));
             const res = await axios.post(`${API}/employees/import`, { employees: payload });
             message.success(`นำเข้าสำเร็จ: เพิ่มใหม่ ${res.data.created} คน, อัปเดต ${res.data.updated} คน`);
@@ -214,21 +279,6 @@ export const Employees: React.FC = () => {
         message.success('ดาวน์โหลด Template CSV สำเร็จ');
     };
 
-    const handleExportCSV = () => {
-        const header = 'รหัสพนักงาน,ชื่อ-นามสกุล,แผนก,ตำแหน่ง,อีเมล,เบอร์โทรศัพท์,วันที่เริ่มงาน,สถานะ';
-        const rows = employees.map(e =>
-            `${e.employee_code},"${e.name}","${e.department}","${e.position}",${e.email},${e.phone},${e.joinDate},${e.status === 'active' ? 'ใช้งาน' : 'ลาออก'}`
-        );
-        const csv = [header, ...rows].join('\n');
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `employees_${dayjs().format('YYYY-MM-DD')}.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
-        message.success('Export CSV สำเร็จ');
-    };
 
     const filteredEmployees = employees.filter(emp =>
         emp.name.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -265,6 +315,7 @@ export const Employees: React.FC = () => {
             phone: values.phone,
             email: values.email,
             base_salary: values.base_salary || 0,
+            id_number: values.id_number || null,
         };
         try {
             if (editingEmployee) {
@@ -393,6 +444,9 @@ export const Employees: React.FC = () => {
                     <Tooltip title="แก้ไขข้อมูล">
                         <Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => showDrawer(record)} />
                     </Tooltip>
+                    <Tooltip title="Admin Professional Tools">
+                        <Button type="text" icon={<SecurityScanOutlined style={{ color: '#faad14' }} />} onClick={() => openAdminDrawer(record)} />
+                    </Tooltip>
                     <Popconfirm
                         title="ยืนยันการลบข้อมูล"
                         description={`คุณต้องการลบข้อมูลของ ${record.name} หรือไม่?`}
@@ -408,6 +462,85 @@ export const Employees: React.FC = () => {
         }
     ];
 
+    const openAdminDrawer = (record: any) => {
+        setSelectedEmployeeForAdmin(record);
+        adminForm.setFieldsValue({
+            probation_end_date: record.probation_end_date ? dayjs(record.probation_end_date) : null,
+            contract_end_date: record.contract_end_date ? dayjs(record.contract_end_date) : null,
+            notes: record.notes
+        });
+        fetchAdminData(record.id);
+        setAdminDrawerVisible(true);
+    };
+
+    const fetchAdminData = async (empId: string) => {
+        setAdminLoading(true);
+        try {
+            const [docRes, discRes] = await Promise.all([
+                axios.get(`${API}/employees/${empId}/documents`),
+                axios.get(`${API}/employees/${empId}/disciplinary`)
+            ]);
+            setDocuments(docRes.data);
+            setDisciplinaryRecords(discRes.data);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setAdminLoading(false);
+        }
+    };
+
+    const handleAdminSave = async (values: any) => {
+        try {
+            await axios.put(`${API}/employees/${selectedEmployeeForAdmin?.id}/admin`, {
+                ...values,
+                probation_end_date: values.probation_end_date?.format('YYYY-MM-DD'),
+                contract_end_date: values.contract_end_date?.format('YYYY-MM-DD'),
+            });
+            message.success('อัปเดตข้อมูลแอดมินสำเร็จ');
+            fetchData();
+        } catch (error) {
+            message.error('บันทึกข้อมูลไม่สำเร็จ');
+        }
+    };
+
+    const handleUpload = async (options: any) => {
+        const { file } = options;
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('category', 'เอกสารสำคัญ');
+        try {
+            await axios.post(`${API}/employees/${selectedEmployeeForAdmin?.id}/documents`, formData);
+            message.success('อัปโหลดไฟล์สำเร็จ');
+            fetchAdminData(selectedEmployeeForAdmin!.id);
+        } catch (error) {
+            message.error('อัปโหลดไฟล์ไม่สำเร็จ');
+        }
+    };
+
+    const handleDeleteDoc = async (id: number) => {
+        try {
+            await axios.delete(`${API}/documents/${id}`);
+            message.success('ลบเอกสารสำเร็จ');
+            fetchAdminData(selectedEmployeeForAdmin!.id);
+        } catch (error) {
+            message.error('ลบไม่สำเร็จ');
+        }
+    };
+
+    const handleAddDisciplinary = async (values: any) => {
+        try {
+            await axios.post(`${API}/employees/${selectedEmployeeForAdmin?.id}/disciplinary`, {
+                ...values,
+                issued_at: values.issued_at.format('YYYY-MM-DD')
+            });
+            message.success('บันทึกวินัยสำเร็จ');
+            disciplineForm.resetFields();
+            fetchAdminData(selectedEmployeeForAdmin!.id);
+        } catch (error) {
+            message.error('บันทึกวินัยไม่สำเร็จ');
+        }
+    };
+
     return (
         <div>
             {/* ── Header ── */}
@@ -420,13 +553,13 @@ export const Employees: React.FC = () => {
                     <Tooltip title="ดาวน์โหลดตัวอย่างไฟล์ CSV">
                         <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>Template CSV</Button>
                     </Tooltip>
-                    <Button icon={<ExportOutlined />} onClick={handleExportCSV}>Export CSV</Button>
+                    <Button icon={<FileExcelOutlined />} style={{ color: '#52c41a', borderColor: '#52c41a' }} onClick={handleExportExcel}>Export Excel</Button>
                     <Button
                         icon={<ImportOutlined />}
                         onClick={() => { setCsvRows([]); setImportModalOpen(true); }}
                         style={{ background: '#722ed1', borderColor: '#722ed1', color: '#fff' }}
                     >
-                        นำเข้าจาก CSV
+                        Import File (Excel/CSV)
                     </Button>
                     <Button type="primary" icon={<PlusOutlined />} onClick={() => showDrawer()}>เพิ่มพนักงานใหม่</Button>
                 </Space>
@@ -477,9 +610,9 @@ export const Employees: React.FC = () => {
                     <div>
                         {/* Upload Zone */}
                         <Dragger
-                            accept=".csv"
+                            accept=".csv, .xlsx, .xls"
                             showUploadList={false}
-                            beforeUpload={(file) => { parseCsvFile(file); return false; }}
+                            beforeUpload={handleFileParse}
                             style={{ marginBottom: 16 }}
                         >
                             <p className="ant-upload-drag-icon"><FileTextOutlined style={{ fontSize: 48, color: '#1890ff' }} /></p>
@@ -612,6 +745,11 @@ export const Employees: React.FC = () => {
                             </Form.Item>
                         </Col>
                         <Col span={12}>
+                            <Form.Item name="id_number" label="เลขประจำตัวประชาชน (13 หลัก)" rules={[{ len: 13, message: 'เลขบัตรประชาชนต้องมี 13 หลัก' }]}>
+                                <Input placeholder="1xxxxxxxxxxxx" maxLength={13} />
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
                             <Form.Item name="status" label="สถานะการทำงาน" rules={[{ required: true }]}>
                                 <Select>
                                     <Option value="active">ทำงานอยู่ (Active)</Option>
@@ -621,6 +759,104 @@ export const Employees: React.FC = () => {
                         </Col>
                     </Row>
                 </Form>
+            </Drawer>
+
+            {/* ── Admin Professional Drawer ── */}
+            <Drawer
+                title={<Space><SecurityScanOutlined /> Admin Professional View: {selectedEmployeeForAdmin?.name}</Space>}
+                width={700}
+                onClose={() => setAdminDrawerVisible(false)}
+                open={adminDrawerVisible}
+            >
+                <Spin spinning={adminLoading}>
+                    <Tabs defaultActiveKey="1">
+                    <TabPane tab="สถานะสัญญา & บันทึก" key="1">
+                        <Form form={adminForm} layout="vertical" onFinish={handleAdminSave}>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="probation_end_date" label="วันสิ้นสุดช่วงทดลองงาน (Probation End)">
+                                        <DatePicker style={{ width: '100%' }} />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="contract_end_date" label="วันสิ้นสุดสัญญาจ้าง (Contract End)">
+                                        <DatePicker style={{ width: '100%' }} />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Form.Item name="notes" label="บันทึกแอดมินส่วนตัว (Private Admin Notes)">
+                                <TextArea rows={6} placeholder="ระบุรายละเอียดเพิ่มเติมเกี่ยวกับพนักงานคนนี้ (เก็บเป็นความลับเฉพาะ Admin)" />
+                            </Form.Item>
+                            <Button type="primary" htmlType="submit" block>บันทึกข้อมูลพื้นฐาน</Button>
+                        </Form>
+                    </TabPane>
+
+                    <TabPane tab="เอกสารพนักงาน" key="2">
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                            <Upload customRequest={handleUpload} showUploadList={false}>
+                                <Button icon={<UploadOutlined />} type="dashed" block>คลิกเพื่ออัปโหลดเอกสาร (Scan ID, ทะเบียนบ้าน ฯลฯ)</Button>
+                            </Upload>
+                            <Table
+                                dataSource={documents}
+                                pagination={false}
+                                columns={[
+                                    { title: 'ชื่อไฟล์', dataIndex: 'document_name', key: 'name' },
+                                    { title: 'หมวดหมู่', dataIndex: 'category', key: 'cat' },
+                                    { 
+                                        title: 'จัดการ', key: 'op', 
+                                        render: (_, r) => (
+                                            <Space>
+                                                <Button size="small" icon={<DownloadOutlined />} href={`http://localhost:5000/${r.file_path}`} target="_blank" />
+                                                <Popconfirm title="ลบเอกสารนี้?" onConfirm={() => handleDeleteDoc(r.id)}>
+                                                    <Button size="small" danger icon={<DeleteOutlined />} />
+                                                </Popconfirm>
+                                            </Space>
+                                        ) 
+                                    }
+                                ]}
+                            />
+                        </Space>
+                    </TabPane>
+
+                    <TabPane tab="ประวัติวินัย" key="3">
+                        <Form form={disciplineForm} layout="vertical" onFinish={handleAddDisciplinary}>
+                            <Row gutter={8}>
+                                <Col span={8}>
+                                    <Form.Item name="type" label="ประเภท" rules={[{ required: true }]}>
+                                        <Select placeholder="เลือกประเภท">
+                                            <Option value="ตักเตือนด้วยวาจา">ตักเตือนด้วยวาจา</Option>
+                                            <Option value="ตักเตือนด้วยลายลักษณ์อักษร">ตักเตือนด้วยลายลักษณ์อักษร</Option>
+                                            <Option value="ทัณฑ์บน">ทัณฑ์บน</Option>
+                                            <Option value="อื่นๆ">อื่นๆ</Option>
+                                        </Select>
+                                    </Form.Item>
+                                </Col>
+                                <Col span={8}>
+                                    <Form.Item name="issued_at" label="วันที่ออกหนังสือ" rules={[{ required: true }]}>
+                                        <DatePicker style={{ width: '100%' }} />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={8} style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '24px' }}>
+                                    <Button type="primary" htmlType="submit" block>เพิ่มบันทึก</Button>
+                                </Col>
+                            </Row>
+                            <Form.Item name="description" label="รายละเอียดความผิด/เหตุการณ์">
+                                <TextArea rows={3} />
+                            </Form.Item>
+                        </Form>
+                        <Divider>ประวัติที่ผ่านมา</Divider>
+                        <Table
+                            dataSource={disciplinaryRecords}
+                            pagination={false}
+                            columns={[
+                                { title: 'วันที่', dataIndex: 'issued_at', key: 'date', render: d => dayjs(d).format('DD/MM/YYYY') },
+                                { title: 'ประเภท', dataIndex: 'type', key: 'type', render: t => <Tag color="orange">{t}</Tag> },
+                                { title: 'รายละเอียด', dataIndex: 'description', key: 'desc' }
+                            ]}
+                        />
+                    </TabPane>
+                </Tabs>
+                </Spin>
             </Drawer>
 
             {/* ── Leave Quota Modal ── */}

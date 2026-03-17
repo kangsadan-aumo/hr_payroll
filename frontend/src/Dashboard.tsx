@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Typography, List, Avatar, Progress, Space, Button, message, Spin } from 'antd';
+import { Row, Col, Card, Statistic, Typography, List, Avatar, Progress, Space, Button, message, Spin, Alert } from 'antd';
 import {
     TeamOutlined,
     UserAddOutlined,
@@ -8,7 +8,6 @@ import {
     ClockCircleOutlined,
     WarningOutlined,
     SettingOutlined,
-    ImportOutlined,
     DollarOutlined
 } from '@ant-design/icons';
 import {
@@ -28,7 +27,11 @@ import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
-export const Dashboard: React.FC = () => {
+interface DashboardProps {
+    onNavigate?: (menu: string) => void;
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     const [stats, setStats] = useState({
         totalEmployees: 0,
         newEmployees: 0,
@@ -42,14 +45,17 @@ export const Dashboard: React.FC = () => {
     const [attendanceStats, setAttendanceStats] = useState({ frequentLates: 0, unpaidLeaves: 0 });
     const [todayAttendance, setTodayAttendance] = useState({ present: 0, leave: 0, absent: 0 });
     const [recentActivities, setRecentActivities] = useState<any[]>([]);
+    const [adminAlerts, setAdminAlerts] = useState({ expiringContracts: [], expiringProbations: [], pendingClaimsCount: 0 });
     const [loading, setLoading] = useState(true);
 
     const fetchDashboardData = async () => {
+        setLoading(true);
         try {
-            const [mainRes, payrollRes, attRes] = await Promise.all([
+            const [mainRes, payrollRes, attRes, alertRes] = await Promise.all([
                 axios.get('http://localhost:5000/api/dashboard/stats'),
                 axios.get('http://localhost:5000/api/dashboard/payroll-trends'),
-                axios.get('http://localhost:5000/api/dashboard/attendance-stats')
+                axios.get('http://localhost:5000/api/dashboard/attendance-stats'),
+                axios.get('http://localhost:5000/api/admin/alerts')
             ]);
             setStats(mainRes.data.stats);
             setAttendanceTrendData(mainRes.data.charts.attendanceTrendData);
@@ -58,6 +64,7 @@ export const Dashboard: React.FC = () => {
             setRecentActivities(mainRes.data.recentActivities || []);
             setPayrollTrends(payrollRes.data);
             setAttendanceStats(attRes.data);
+            setAdminAlerts(alertRes.data);
         } catch (error) {
             console.error(error);
             message.error('ไม่สามารถโหลดข้อมูลสถิติได้');
@@ -80,8 +87,7 @@ export const Dashboard: React.FC = () => {
                     <Text type="secondary">ยินดีต้อนรับกลับเข้าสู่ระบบ, สรุปสถานะประจำวันที่ {todayStr}</Text>
                 </div>
                 <Space>
-                    <Button type="primary" icon={<ImportOutlined />}>นำเข้าข้อมูลเข้า-ออกงาน</Button>
-                    <Button icon={<DollarOutlined />}>จัดการเงินเดือน</Button>
+                    <Button icon={<DollarOutlined />} type="primary" onClick={() => onNavigate?.('payroll')}>จัดการเงินเดือน</Button>
                 </Space>
             </div>
 
@@ -128,6 +134,53 @@ export const Dashboard: React.FC = () => {
                     </Card>
                 </Col>
             </Row>
+
+            {/* Admin Alerts Panel */}
+            {(adminAlerts.expiringContracts.length > 0 || adminAlerts.expiringProbations.length > 0 || adminAlerts.pendingClaimsCount > 0) && (
+                <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+                    <Col span={24}>
+                        <Card title={<Space><WarningOutlined style={{ color: '#faad14' }} /> สรุปแจ้งเตือนสำหรับ Admin (Action Required)</Space>} bordered={false} bodyStyle={{ padding: '12px 24px' }}>
+                            <Row gutter={24}>
+                                {adminAlerts.expiringContracts.length > 0 && (
+                                    <Col span={8}>
+                                        <Alert
+                                            message="สัญญาจ้างที่กำลังจะหมดอายุ (30 วัน)"
+                                            description={adminAlerts.expiringContracts.map((c: any) => (
+                                                <div key={c.id}>• {c.name} ({dayjs(c.date).format('DD MMM')})</div>
+                                            ))}
+                                            type="error"
+                                            showIcon
+                                        />
+                                    </Col>
+                                )}
+                                {adminAlerts.expiringProbations.length > 0 && (
+                                    <Col span={8}>
+                                        <Alert
+                                            message="พนักงานที่กำลังจะครบช่วงทดลองงาน"
+                                            description={adminAlerts.expiringProbations.map((p: any) => (
+                                                <div key={p.id}>• {p.name} ({dayjs(p.date).format('DD MMM')})</div>
+                                            ))}
+                                            type="warning"
+                                            showIcon
+                                        />
+                                    </Col>
+                                )}
+                                {adminAlerts.pendingClaimsCount > 0 && (
+                                    <Col span={8}>
+                                        <Alert
+                                            message="พบคลิมรอดำเนินการ (Pending Claims)"
+                                            description={`มีทั้งหมด ${adminAlerts.pendingClaimsCount} รายการที่รอ Admin ตรวจสอบ`}
+                                            type="info"
+                                            showIcon
+                                            action={<Button size="small" type="default" href="/claims">ไปที่หน้าเบิกจ่าย</Button>}
+                                        />
+                                    </Col>
+                                )}
+                            </Row>
+                        </Card>
+                    </Col>
+                </Row>
+            )}
 
             {/* Charts Section */}
             <Row gutter={[16, 16]} style={{ marginTop: 16 }}>

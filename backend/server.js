@@ -3,6 +3,11 @@ import cors from 'cors';
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import dayjs from 'dayjs';
+import ExcelJS from 'exceljs';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
@@ -10,6 +15,26 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve uploads as static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Multer config
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = './uploads';
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + '-' + file.originalname);
+    }
+});
+const upload = multer({ storage });
 
 const pool = mysql.createPool({
     host: process.env.DB_HOST || 'localhost',
@@ -28,6 +53,85 @@ const pool = mysql.createPool({
 function calculateSSO(baseSalary) {
     // ประกันสังคม 5% ของเงินเดือน แต่ไม่เกิน 750 บาท/เดือน
     return Math.min(Math.floor(baseSalary * 0.05), 750);
+}
+
+// ─────────────────────────────────────────────
+// 💡 HELPER: คำนวณภาษีเงินได้บุคคลธรรมดา (PIT) - แบบขั้นบันได (รวมลดหย่อน)
+// ─────────────────────────────────────────────
+function calculateIncomeTax(baseSalary, allowances = {}) {
+    const annualIncome = baseSalary * 12;
+    
+    // รายได้หลังหักค่าใช้จ่าย (หักได้ 50% แต่ไม่เกิน 100,000)
+    const expenses = Math.min(annualIncome * 0.5, 100000);
+    
+    // ลดหย่อนพื้นฐาน
+    let totalAllowances = 60000; // ส่วนตัว
+    
+    // ลดหย่อนอื่นๆ
+    if (allowances.spouse_allowance) totalAllowances += 60000;
+    totalAllowances += (parseInt(allowances.children_count || 0) * 30000);
+    totalAllowances += (parseInt(allowances.parents_care_count || 0) * 30000);
+    
+    // ประกันชีวิต/สุขภาพ (รวมกันไม่เกิน 100,000 โดยสุขภาพไม่เกิน 25,000)
+    const health = Math.min(parseFloat(allowances.health_insurance || 0), 25000);
+    const life = parseFloat(allowances.life_insurance || 0);
+    totalAllowances += Math.min(health + life, 100000);
+    
+    // ประกันสังคม (หักตามจริงรายปี - สมมติ 750 * 12 = 9,000)
+    totalAllowances += 9000; 
+
+    const taxableIncome = Math.max(0, annualIncome - expenses - totalAllowances);
+    
+    if (taxableIncome <= 150000) return 0;
+    
+    let tax = 0;
+    const tiers = [
+        { limit: 150000, rate: 0 },
+        { limit: 300000, rate: 0.05 },
+        { limit: 500000, rate: 0.10 },
+        { limit: 750000, rate: 0.15 },
+        { limit: 1000000, rate: 0.20 },
+        { limit: 2000000, rate: 0.25 },
+        { limit: 5000000, rate: 0.30 },
+        { limit: Infinity, rate: 0.35 }
+    ];
+
+    let remainingIncome = taxableIncome;
+    let previousLimit = 0;
+
+    for (const tier of tiers) {
+        const incomeInTier = Math.min(remainingIncome, tier.limit - previousLimit);
+        if (incomeInTier <= 0) break;
+        
+        tax += incomeInTier * tier.rate;
+        remainingIncome -= incomeInTier;
+        previousLimit = tier.limit;
+    }
+
+    return Math.floor(tax / 12);
+}
+
+// ─────────────────────────────────────────────
+// 💡 HELPER: คำนวณค่าล่วงเวลา (OT)
+// ─────────────────────────────────────────────
+function calculateOTPay(baseSalary, hours, multiplier) {
+    // ฐานคำนวณ: (เงินเดือน / 30 / 8) * ชั่วโมง * ตัวคูณ
+    const hourlyRate = (baseSalary / 30 / 8);
+    return Math.floor(hourlyRate * hours * multiplier);
+}
+
+// ─────────────────────────────────────────────
+// 💡 AUDIT LOGGER
+// ─────────────────────────────────────────────
+async function logAudit(userId, action, targetTable, targetId, details) {
+    try {
+        await pool.query(
+            'INSERT INTO audit_logs (user_id, action, target_table, target_id, details) VALUES (?, ?, ?, ?, ?)',
+            [userId || 1, action, targetTable, targetId, JSON.stringify(details)]
+        );
+    } catch (err) {
+        console.error('Audit log error:', err.message);
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -69,7 +173,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
             FROM attendance_logs 
             WHERE DATE(check_in_time) = ?
         `, [today]);
-        
+
         const [[leaveTodayRow]] = await pool.query(`
             SELECT COUNT(DISTINCT employee_id) as count 
             FROM leave_requests 
@@ -88,7 +192,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
             const [[pRow]] = await pool.query("SELECT COUNT(DISTINCT employee_id) as count FROM attendance_logs WHERE DATE(check_in_time) = ?", [d]);
             const [[lRow]] = await pool.query("SELECT COUNT(DISTINCT employee_id) as count FROM leave_requests WHERE ? BETWEEN start_date AND end_date AND status = 'approved'", [d]);
-            
+
             const pCount = parseInt(pRow.count) || 0;
             const lCount = parseInt(lRow.count) || 0;
             const aCount = Math.max(0, totalActive - pCount - lCount);
@@ -145,7 +249,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
                 let timeStr = 'เพิ่งเกิดขึ้น';
                 if (diffDays > 0) timeStr = `${diffDays} วันที่แล้ว`;
                 else if (diffHours > 0) timeStr = `${diffHours} ชั่วโมงที่แล้ว`;
-                
+
                 return {
                     title: act.title,
                     time: timeStr,
@@ -233,7 +337,8 @@ app.get('/api/employees', async (req, res) => {
             status: r.status,
             phone: r.phone || '-',
             email: r.email || `${r.employee_code}@company.com`,
-            baseSalary: r.base_salary
+            baseSalary: r.base_salary,
+            id_number: r.id_number
         }));
         res.json(formatted);
     } catch (error) {
@@ -243,12 +348,12 @@ app.get('/api/employees', async (req, res) => {
 
 app.post('/api/employees', async (req, res) => {
     try {
-        const { employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email } = req.body;
+        const { employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number } = req.body;
         const code = employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
         const [result] = await pool.query(
-            `INSERT INTO employees (employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [code, first_name, last_name, department_id, position, join_date, status || 'active', base_salary || 0, phone || null, email || null]
+            `INSERT INTO employees (employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [code, first_name, last_name, department_id, position, join_date, status || 'active', base_salary || 0, phone || null, email || null, id_number || null]
         );
         res.status(201).json({ id: result.insertId, message: 'Employee created' });
     } catch (error) {
@@ -259,10 +364,10 @@ app.post('/api/employees', async (req, res) => {
 app.put('/api/employees/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { first_name, last_name, department_id, position, join_date, status, base_salary, phone, email } = req.body;
+        const { first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number } = req.body;
         const [result] = await pool.query(
-            `UPDATE employees SET first_name=?, last_name=?, department_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-            [first_name, last_name, department_id, position, join_date, status, base_salary, phone || null, email || null, id]
+            `UPDATE employees SET first_name=?, last_name=?, department_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+            [first_name, last_name, department_id, position, join_date, status, base_salary, phone || null, email || null, id_number || null, id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
         res.json({ message: 'Employee updated' });
@@ -313,7 +418,7 @@ app.post('/api/employees/import', async (req, res) => {
                         continue;
                     }
                 }
-const code = emp.employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
+                const code = emp.employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
                 await pool.query(
                     `INSERT INTO employees (employee_code, first_name, last_name, department_id, position, join_date, status, base_salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                     [code, emp.first_name, emp.last_name, deptId, emp.position, emp.join_date, emp.status || 'active', emp.base_salary || 0]
@@ -353,7 +458,7 @@ app.put('/api/employees/:id/leave-quotas', async (req, res) => {
     try {
         const employeeId = req.params.id;
         const { quotas } = req.body; // Array of { leave_type_id, quota_days }
-        
+
         // Loop and UPSERT
         for (const q of quotas) {
             const currentQuota = parseFloat(q.quota_days) || 0;
@@ -697,24 +802,41 @@ app.get('/api/payroll', async (req, res) => {
 
         const [employees] = await pool.query(`
             SELECT e.id, e.employee_code, CONCAT(e.first_name, ' ', e.last_name) as name,
-                   d.name as department, e.base_salary, e.shift_id
+                   d.name as department, e.base_salary, e.shift_id,
+                   e.spouse_allowance, e.children_count, e.parents_care_count,
+                   e.health_insurance, e.life_insurance, e.pvf_rate, e.pvf_employer_rate
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             WHERE e.status = 'active'
         `);
 
-        // ดึง attendance รายเดือน
+        // ดึง attendance และ OT
+        const monthStr = String(month).padStart(2, '0');
+        const yearStr = String(year);
+
         const [attendanceLogs] = await pool.query(`
             SELECT employee_id, SUM(late_minutes) as total_late_minutes,
                    COUNT(*) as work_days
             FROM attendance_logs
             WHERE DATE_FORMAT(check_in_time, '%m') = ? AND DATE_FORMAT(check_in_time, '%Y') = ?
             GROUP BY employee_id
-        `, [String(month).padStart(2, '0'), String(year)]);
+        `, [monthStr, yearStr]);
         const attendanceMap = {};
         attendanceLogs.forEach(a => { attendanceMap[a.employee_id] = a; });
 
-        // ดึง unpaid leave รายเดือน
+        const [otLogs] = await pool.query(`
+            SELECT employee_id, multiplier, SUM(hours) as total_hours
+            FROM overtime_requests
+            WHERE status = 'approved' AND DATE_FORMAT(date, '%m') = ? AND DATE_FORMAT(date, '%Y') = ?
+            GROUP BY employee_id, multiplier
+        `, [monthStr, yearStr]);
+        const otMap = {};
+        otLogs.forEach(o => {
+            if (!otMap[o.employee_id]) otMap[o.employee_id] = {};
+            otMap[o.employee_id][o.multiplier] = parseFloat(o.total_hours);
+        });
+
+        // ดึง unpaid leave
         const [unpaidLeaves] = await pool.query(`
             SELECT lr.employee_id, SUM(lr.total_days) as unpaid_days
             FROM leave_requests lr
@@ -722,28 +844,39 @@ app.get('/api/payroll', async (req, res) => {
             WHERE lt.is_unpaid = 1 AND lr.status = 'approved'
               AND DATE_FORMAT(lr.start_date, '%m') = ? AND DATE_FORMAT(lr.start_date, '%Y') = ?
             GROUP BY lr.employee_id
-        `, [String(month).padStart(2, '0'), String(year)]);
+        `, [monthStr, yearStr]);
         const leaveMap = {};
         unpaidLeaves.forEach(l => { leaveMap[l.employee_id] = l; });
 
         const preview = employees.map(e => {
             const baseSalary = parseFloat(e.base_salary || 0);
             const att = attendanceMap[e.id];
+            
+            // OT
+            const empOt = otMap[e.id] || {};
+            const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
+            const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
+            const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
+            const totalOT = ot1_5_pay + ot2_pay + ot3_pay;
 
-            // คำนวณค่าปรับสาย
+            // PVF
+            const pvfEmployee = Math.floor(baseSalary * (parseFloat(e.pvf_rate || 0) / 100));
+            const pvfEmployer = Math.floor(baseSalary * (parseFloat(e.pvf_employer_rate || 0) / 100));
+
+            // ค่าปรับสาย
             const totalLateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
             const latePenalty = Math.floor(totalLateMinutes * latePenaltyPerMin);
 
-            // คำนวณหักลาไม่รับเงิน
+            // หักลา
             const lv = leaveMap[e.id];
             const unpaidDays = lv ? parseFloat(lv.unpaid_days || 0) : 0;
             const unpaidLeaveDeduction = Math.floor((baseSalary / 30) * unpaidDays);
 
-            // เบี้ยขยัน: ได้ถ้าไม่สาย และไม่มีลาไม่รับเงิน
-            const earnedDiligence = (latePenalty === 0 && unpaidDays === 0) ? diligenceAllowance : 0;
+            // เบี้ยขยัน (เงื่อนไขอัตโนมัติ: ไม่สาย และไม่มีลาไม่รับเงิน)
+            const earnedDiligence = (totalLateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0;
 
-            // ภาษี/SSO
-            const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary * 12) : 0;
+            // ภาษี (PIT) - ส่ง allowances ไปคำนวณ
+            const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e) : 0;
             const ssoDeduction = autoDeductSSO ? calculateSSO(baseSalary) : 0;
 
             return {
@@ -752,9 +885,10 @@ app.get('/api/payroll', async (req, res) => {
                 name: e.name,
                 department: e.department || 'ไม่ระบุ',
                 baseSalary,
-                earnings: { overtime: 0, bonus: 0, diligenceAllowance: earnedDiligence },
-                deductions: { tax: taxDeduction, socialSecurity: ssoDeduction, latePenalty: latePenalty, unpaidLeave: unpaidLeaveDeduction },
-                netSalary: baseSalary + earnedDiligence - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction,
+                earnings: { overtime: totalOT, bonus: 0, diligenceAllowance: earnedDiligence, ot1_5_pay, ot2_pay, ot3_pay },
+                deductions: { tax: taxDeduction, socialSecurity: ssoDeduction, latePenalty, unpaidLeave: unpaidLeaveDeduction, pvfEmployee },
+                pvfEmployer,
+                netSalary: baseSalary + totalOT + earnedDiligence - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee,
                 status: 'draft',
                 period: { month, year },
                 isPreview: true,
@@ -774,6 +908,8 @@ app.post('/api/payroll/calculate', async (req, res) => {
     try {
         const month = parseInt(req.body.month) || dayjs().month() + 1;
         const year = parseInt(req.body.year) || dayjs().year();
+        const monthStr = String(month).padStart(2, '0');
+        const yearStr = String(year);
 
         const [settingsRows] = await pool.query('SELECT * FROM system_settings LIMIT 1');
         const settings = settingsRows[0] || {};
@@ -784,20 +920,45 @@ app.post('/api/payroll/calculate', async (req, res) => {
 
         const [employees] = await pool.query(`
             SELECT e.id, e.employee_code, CONCAT(e.first_name, ' ', e.last_name) as name,
-                   d.name as department, e.base_salary
+                   d.name as department, e.base_salary,
+                   e.spouse_allowance, e.children_count, e.parents_care_count,
+                   e.health_insurance, e.life_insurance, e.pvf_rate, e.pvf_employer_rate
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             WHERE e.status = 'active'
         `);
 
+        // Fetch Data Maps
         const [attendanceLogs] = await pool.query(`
             SELECT employee_id, SUM(late_minutes) as total_late_minutes
             FROM attendance_logs
             WHERE DATE_FORMAT(check_in_time, '%m') = ? AND DATE_FORMAT(check_in_time, '%Y') = ?
             GROUP BY employee_id
-        `, [String(month).padStart(2, '0'), String(year)]);
+        `, [monthStr, yearStr]);
         const attendanceMap = {};
         attendanceLogs.forEach(a => { attendanceMap[a.employee_id] = a; });
+
+        const [otLogs] = await pool.query(`
+            SELECT employee_id, multiplier, SUM(hours) as total_hours
+            FROM overtime_requests
+            WHERE status = 'approved' AND DATE_FORMAT(date, '%m') = ? AND DATE_FORMAT(date, '%Y') = ?
+            GROUP BY employee_id, multiplier
+        `, [monthStr, yearStr]);
+        const otMap = {};
+        otLogs.forEach(o => {
+            if (!otMap[o.employee_id]) otMap[o.employee_id] = {};
+            otMap[o.employee_id][o.multiplier] = parseFloat(o.total_hours);
+        });
+
+        const [claims] = await pool.query(`
+            SELECT employee_id, SUM(amount) as total_claims
+            FROM claims
+            WHERE status = 'approved' AND payroll_id IS NULL
+              AND DATE_FORMAT(receipt_date, '%m') = ? AND DATE_FORMAT(receipt_date, '%Y') = ?
+            GROUP BY employee_id
+        `, [monthStr, yearStr]);
+        const claimsMap = {};
+        claims.forEach(c => { claimsMap[c.employee_id] = c; });
 
         const [unpaidLeaves] = await pool.query(`
             SELECT lr.employee_id, SUM(lr.total_days) as unpaid_days
@@ -806,38 +967,65 @@ app.post('/api/payroll/calculate', async (req, res) => {
             WHERE lt.is_unpaid = 1 AND lr.status = 'approved'
               AND DATE_FORMAT(lr.start_date, '%m') = ? AND DATE_FORMAT(lr.start_date, '%Y') = ?
             GROUP BY lr.employee_id
-        `, [String(month).padStart(2, '0'), String(year)]);
+        `, [monthStr, yearStr]);
         const leaveMap = {};
         unpaidLeaves.forEach(l => { leaveMap[l.employee_id] = l; });
 
         let savedCount = 0;
         for (const e of employees) {
             const baseSalary = parseFloat(e.base_salary || 0);
-            const att = attendanceMap[e.id];
-            const totalLateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
-            const latePenalty = Math.floor(totalLateMinutes * latePenaltyPerMin);
+            
+            // OT Calculation
+            const empOt = otMap[e.id] || {};
+            const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
+            const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
+            const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
+            const totalOT = ot1_5_pay + ot2_pay + ot3_pay;
 
+            // Health/Deductions
+            const att = attendanceMap[e.id];
+            const lateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
+            const latePenalty = Math.floor(lateMinutes * latePenaltyPerMin);
             const lv = leaveMap[e.id];
             const unpaidDays = lv ? parseFloat(lv.unpaid_days || 0) : 0;
             const unpaidLeaveDeduction = Math.floor((baseSalary / 30) * unpaidDays);
 
-            const earnedDiligence = (latePenalty === 0 && unpaidDays === 0) ? diligenceAllowance : 0;
-            const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary * 12) : 0;
+            const cl = claimsMap[e.id];
+            const totalClaims = cl ? parseFloat(cl.total_claims || 0) : 0;
+            const earnedDiligence = (lateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0;
+
+            // PVF
+            const pvfEmployee = Math.floor(baseSalary * (parseFloat(e.pvf_rate || 0) / 100));
+            const pvfEmployer = Math.floor(baseSalary * (parseFloat(e.pvf_employer_rate || 0) / 100));
+            
+            // Tax & SSO
+            const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e) : 0;
             const ssoDeduction = autoDeductSSO ? calculateSSO(baseSalary) : 0;
 
-            const netSalary = baseSalary + earnedDiligence - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction;
+            const netSalary = baseSalary + totalOT + earnedDiligence + totalClaims - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee;
 
-            // Upsert: ลบเก่าแล้วใส่ใหม่
+            // Upsert
             await pool.query(
                 'DELETE FROM payroll_records WHERE employee_id=? AND period_month=? AND period_year=?',
                 [e.id, month, year]
             );
-            await pool.query(`
+            const [payrollRes] = await pool.query(`
                 INSERT INTO payroll_records 
                     (employee_id, period_month, period_year, base_salary, overtime_pay, bonus,
-                     late_deduction, leave_deduction, tax_deduction, sso_deduction, diligence_allowance, net_salary, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
-            `, [e.id, month, year, baseSalary, 0, 0, latePenalty, unpaidLeaveDeduction, taxDeduction, ssoDeduction, earnedDiligence, netSalary]);
+                     late_deduction, leave_deduction, tax_deduction, sso_deduction, diligence_allowance, claims_total, net_salary, 
+                     pvf_employee_amount, pvf_employer_amount, ot_1_5_pay, ot_2_pay, ot_3_pay, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+            `, [e.id, month, year, baseSalary, totalOT, 0, latePenalty, unpaidLeaveDeduction, taxDeduction, ssoDeduction, earnedDiligence, totalClaims, netSalary,
+                pvfEmployee, pvfEmployer, ot1_5_pay, ot2_pay, ot3_pay]);
+            
+            const payrollId = payrollRes.insertId;
+
+            // Fix claims
+            await pool.query(
+                "UPDATE claims SET payroll_id = ?, status = 'paid' WHERE employee_id = ? AND status = 'approved' AND payroll_id IS NULL AND DATE_FORMAT(receipt_date, '%m') = ? AND DATE_FORMAT(receipt_date, '%Y') = ?",
+                [payrollId, e.id, monthStr, yearStr]
+            );
+
             savedCount++;
         }
 
@@ -1146,6 +1334,47 @@ app.post('/api/attendance/import', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// 💸 CLAIMS & REIMBURSEMENTS
+// ─────────────────────────────────────────────
+app.get('/api/claims', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT c.*, CONCAT(e.first_name, ' ', e.last_name) as employee_name, e.employee_code
+            FROM claims c
+            JOIN employees e ON c.employee_id = e.id
+            ORDER BY c.receipt_date DESC
+        `);
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/claims', async (req, res) => {
+    try {
+        const { employee_id, claim_type, amount, receipt_date, description } = req.body;
+        await pool.query(
+            'INSERT INTO claims (employee_id, claim_type, amount, receipt_date, description) VALUES (?, ?, ?, ?, ?)',
+            [employee_id, claim_type, amount, receipt_date, description]
+        );
+        res.status(201).json({ message: 'Claim submitted' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/claims/:id/status', async (req, res) => {
+    try {
+        const { status } = req.body;
+        await pool.query('UPDATE claims SET status = ? WHERE id = ?', [status, req.params.id]);
+        res.json({ message: `Claim ${status}` });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/claims/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM claims WHERE id = ?', [req.params.id]);
+        res.json({ message: 'Claim deleted' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─────────────────────────────────────────────
 // START SERVER + AUTO MIGRATION
 // ─────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
@@ -1156,6 +1385,86 @@ async function runMigrations() {
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS diligence_allowance DECIMAL(10,2) DEFAULT 0.00`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(20) DEFAULT NULL`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS email VARCHAR(150) DEFAULT NULL`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS claims_total DECIMAL(10,2) DEFAULT 0.00`,
+        `CREATE TABLE IF NOT EXISTS claims (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            claim_type VARCHAR(100) NOT NULL,
+            amount DECIMAL(10, 2) NOT NULL,
+            receipt_date DATE NOT NULL,
+            description TEXT,
+            status VARCHAR(20) DEFAULT 'pending',
+            payroll_id INT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS probation_end_date DATE DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS contract_end_date DATE DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT NULL`,
+        `CREATE TABLE IF NOT EXISTS employee_documents (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            document_name VARCHAR(255) NOT NULL,
+            file_path VARCHAR(255) NOT NULL,
+            category VARCHAR(100),
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS disciplinary_records (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            type VARCHAR(100) NOT NULL,
+            description TEXT,
+            issued_at DATE NOT NULL,
+            created_by INT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS audit_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT,
+            action VARCHAR(100) NOT NULL,
+            target_table VARCHAR(100),
+            target_id INT,
+            details JSON,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS id_number VARCHAR(13) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS spouse_allowance TINYINT(1) DEFAULT 0`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS children_count INT DEFAULT 0`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS parents_care_count INT DEFAULT 0`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS health_insurance DECIMAL(10,2) DEFAULT 0.00`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS life_insurance DECIMAL(10,2) DEFAULT 0.00`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS pvf_rate DECIMAL(5,2) DEFAULT 0.00`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS pvf_employer_rate DECIMAL(5,2) DEFAULT 0.00`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pvf_employee_amount DECIMAL(10,2) DEFAULT 0.00`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pvf_employer_amount DECIMAL(10,2) DEFAULT 0.00`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_1_5_pay DECIMAL(10,2) DEFAULT 0.00`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_2_pay DECIMAL(10,2) DEFAULT 0.00`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_3_pay DECIMAL(10,2) DEFAULT 0.00`,
+        `CREATE TABLE IF NOT EXISTS overtime_requests (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            date DATE NOT NULL,
+            hours DECIMAL(5,2) NOT NULL,
+            multiplier DECIMAL(3,1) DEFAULT 1.5,
+            reason TEXT,
+            status VARCHAR(20) DEFAULT 'pending',
+            approved_by INT,
+            approved_at TIMESTAMP NULL,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS shift_schedules (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            shift_id INT NOT NULL,
+            date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
+            UNIQUE(employee_id, date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     ];
     for (const sql of migrations) {
         try {
@@ -1183,7 +1492,7 @@ app.post('/api/settings/holidays', async (req, res) => {
     try {
         const { date, name } = req.body;
         if (!date || !name) return res.status(400).json({ error: 'กรุณาระบุวันที่และชื่อวันหยุด' });
-        
+
         await pool.query('INSERT INTO public_holidays (holiday_date, name) VALUES (?, ?)', [date, name]);
         res.status(201).json({ message: 'เพิ่มวันหยุดนักขัตฤกษ์สำเร็จ' });
     } catch (error) {
@@ -1201,6 +1510,152 @@ app.delete('/api/settings/holidays/:id', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+// ─────────────────────────────────────────────
+// 📄 GOVERNMENT REPORTS (Tax & SSO)
+// ─────────────────────────────────────────────
+
+// 1. พ.ง.ด. 1 (Monthly Withholding Tax)
+app.get('/api/reports/pnd1', async (req, res) => {
+    try {
+        const { month, year } = req.query;
+        if (!month || !year) return res.status(400).json({ error: 'กรุณาระบุเดือนและปี' });
+
+        const [rows] = await pool.query(`
+            SELECT pr.*, e.first_name, e.last_name, e.id_number, d.name as department
+            FROM payroll_records pr
+            JOIN employees e ON pr.employee_id = e.id
+            LEFT JOIN departments d ON e.department_id = d.id
+            WHERE pr.period_month = ? AND pr.period_year = ? AND pr.status = 'paid'
+        `, [month, year]);
+
+        const [settings] = await pool.query('SELECT * FROM system_settings LIMIT 1');
+        const company = settings[0] || {};
+
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('PND1');
+
+        sheet.columns = [
+            { header: 'ลำดับ', key: 'idx', width: 5 },
+            { header: 'เลขประจำตัวประจำตัวผู้เสียภาษี (ID Number)', key: 'id_number', width: 20 },
+            { header: 'ชื่อ-นามสกุล', key: 'name', width: 25 },
+            { header: 'เงินเดือน/เงินได้', key: 'income', width: 15 },
+            { header: 'ภาษีที่หักไว้', key: 'tax', width: 15 },
+            { header: 'เงื่อนไขหักภาษี', key: 'type', width: 10 },
+        ];
+
+        rows.forEach((r, i) => {
+            sheet.addRow({
+                idx: i + 1,
+                id_number: r.id_number || '-',
+                name: `${r.first_name} ${r.last_name}`,
+                income: parseFloat(r.base_salary) + parseFloat(r.overtime_pay) + parseFloat(r.bonus),
+                tax: parseFloat(r.tax_deduction),
+                type: '1' // หัก ณ ที่จ่าย
+            });
+        });
+
+        // Add Header rows for company info
+        sheet.insertRow(1, ['รายงานภาษีเงินได้หัก ณ ที่จ่าย (พ.ง.ด. 1)']);
+        sheet.insertRow(2, [`บริษัท: ${company.company_name || '-'}`, '', `Tax ID: ${company.tax_id || '-'}`]);
+        sheet.insertRow(3, [`ประจำเดือน: ${month}/${year}`]);
+        sheet.insertRow(4, []); // Empty
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=PND1_${month}_${year}.xlsx`);
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// 2. สปส. 1-10 (Social Security Report)
+app.get('/api/reports/sso', async (req, res) => {
+    try {
+        const { month, year } = req.query;
+        if (!month || !year) return res.status(400).json({ error: 'กรุณาระบุเดือนและปี' });
+
+        const [rows] = await pool.query(`
+            SELECT pr.*, e.first_name, e.last_name, e.id_number
+            FROM payroll_records pr
+            JOIN employees e ON pr.employee_id = e.id
+            WHERE pr.period_month = ? AND pr.period_year = ? AND pr.status = 'paid'
+        `, [month, year]);
+
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('SSO_1_10');
+
+        sheet.columns = [
+            { header: 'ลำดับ', key: 'idx', width: 5 },
+            { header: 'เลขบัตรประชาชน', key: 'id_number', width: 20 },
+            { header: 'ชื่อ-นามสกุล', key: 'name', width: 25 },
+            { header: 'ค่าจ้าง (ไม่เกิน 15,000)', key: 'salary', width: 15 },
+            { header: 'เงินสมทบ (5%)', key: 'sso', width: 15 },
+        ];
+
+        rows.forEach((r, i) => {
+            const cappedSalary = Math.min(15000, parseFloat(r.base_salary));
+            sheet.addRow({
+                idx: i + 1,
+                id_number: r.id_number || '-',
+                name: `${r.first_name} ${r.last_name}`,
+                salary: cappedSalary,
+                sso: parseFloat(r.sso_deduction)
+            });
+        });
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=SSO_${month}_${year}.xlsx`);
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// 3. ทวิ 50 (Annual Withholding Tax Certificate)
+app.get('/api/reports/50tawi/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { year } = req.query;
+        if (!year) return res.status(400).json({ error: 'กรุณาระบุปี' });
+
+        const [records] = await pool.query(`
+            SELECT SUM(base_salary + overtime_pay + bonus) as total_income,
+                   SUM(tax_deduction) as total_tax,
+                   SUM(sso_deduction) as total_sso
+            FROM payroll_records
+            WHERE employee_id = ? AND period_year = ? AND status = 'paid'
+        `, [id, year]);
+
+        const [[emp]] = await pool.query('SELECT * FROM employees WHERE id = ?', [id]);
+        const [[company]] = await pool.query('SELECT * FROM system_settings LIMIT 1');
+
+        if (!emp) return res.status(404).json({ error: 'พนักงานไม่พบ' });
+
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('50Tawi');
+
+        sheet.addRow(['หนังสือรับรองการหักภาษี ณ ที่จ่าย (ทวิ 50)']);
+        sheet.addRow([`ประจำปีภาษี: ${year}`]);
+        sheet.addRow([]);
+        sheet.addRow(['ผู้มีหน้าที่หัก ณ ที่จ่าย (บริษัท)']);
+        sheet.addRow([`ชื่อ: ${company?.company_name || '-'}`]);
+        sheet.addRow([`เลขประจำตัวผู้เสียภาษี: ${company?.tax_id || '-'}`]);
+        sheet.addRow([`ที่อยู่: ${company?.address || '-'}`]);
+        sheet.addRow([]);
+        sheet.addRow(['ผู้ถูกหัก ณ ที่จ่าย (พนักงาน)']);
+        sheet.addRow([`ชื่อ: ${emp.first_name} ${emp.last_name}`]);
+        sheet.addRow([`เลขประจำตัวประชาชน: ${emp.id_number || '-'}`]);
+        sheet.addRow([]);
+        sheet.addRow(['รายการเงินได้', 'จำนวนเงินที่จ่าย (บาท)', 'ภาษีที่หักและนำส่ง (บาท)']);
+        sheet.addRow(['1. เงินเดือน ค่าจ้าง โบนัส ฯลฯ', records[0].total_income || 0, records[0].total_tax || 0]);
+        sheet.addRow([]);
+        sheet.addRow([`เงินสมทบกองทุนประกันสังคม: ${records[0].total_sso || 0} บาท`]);
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=50Tawi_${emp.first_name}_${year}.xlsx`);
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 // ─────────────────────────────────────────────
@@ -1252,6 +1707,170 @@ app.get('/api/dashboard/attendance-stats', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+app.get('/api/analytics/cost-summary', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT d.name as department, 
+                   SUM(pr.base_salary + pr.overtime_pay + pr.bonus + pr.diligence_allowance + pr.claims_total) as total_cost,
+                   SUM(pr.base_salary) as base_total,
+                   SUM(pr.overtime_pay) as ot_total,
+                   SUM(pr.claims_total) as claims_total
+            FROM payroll_records pr
+            JOIN employees e ON pr.employee_id = e.id
+            JOIN departments d ON e.department_id = d.id
+            WHERE pr.status = 'paid'
+            GROUP BY d.name
+        `);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ─────────────────────────────────────────────
+// HR ADMIN — ADVANCED FEATURES
+// ─────────────────────────────────────────────
+
+// Employee Admin Info (Probation, Contract, Notes)
+app.put('/api/employees/:id/admin', async (req, res) => {
+    try {
+        const { probation_end_date, contract_end_date, notes } = req.body;
+        await pool.query(
+            'UPDATE employees SET probation_end_date=?, contract_end_date=?, notes=? WHERE id=?',
+            [probation_end_date, contract_end_date, notes, req.params.id]
+        );
+        logAudit(null, 'UPDATE_ADMIN_INFO', 'employees', req.params.id, { probation_end_date, contract_end_date });
+        res.json({ message: 'ข้อมูลแอดมินอัปเดตแล้ว' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Documents Management
+app.post('/api/employees/:id/documents', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+        const { category } = req.body;
+        const [result] = await pool.query(
+            'INSERT INTO employee_documents (employee_id, document_name, file_path, category) VALUES (?, ?, ?, ?)',
+            [req.params.id, req.file.originalname, req.file.path, category]
+        );
+        logAudit(null, 'UPLOAD_DOC', 'employee_documents', result.insertId, { filename: req.file.originalname });
+        res.status(201).json({ message: 'อัปโหลดเอกสารสำเร็จ' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/employees/:id/documents', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM employee_documents WHERE employee_id=?', [req.params.id]);
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/documents/:id', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT file_path FROM employee_documents WHERE id=?', [req.params.id]);
+        if (rows.length > 0 && fs.existsSync(rows[0].file_path)) {
+            fs.unlinkSync(rows[0].file_path);
+        }
+        await pool.query('DELETE FROM employee_documents WHERE id=?', [req.params.id]);
+        logAudit(null, 'DELETE_DOC', 'employee_documents', req.params.id, {});
+        res.json({ message: 'ลบเอกสารแล้ว' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Disciplinary Records
+app.post('/api/employees/:id/disciplinary', async (req, res) => {
+    try {
+        const { type, description, issued_at } = req.body;
+        const [result] = await pool.query(
+            'INSERT INTO disciplinary_records (employee_id, type, description, issued_at) VALUES (?, ?, ?, ?)',
+            [req.params.id, type, description, issued_at]
+        );
+        logAudit(null, 'ADD_DISCIPLINARY', 'disciplinary_records', result.insertId, { type });
+        res.status(201).json({ message: 'บันทึกประวัติวินัยสำเร็จ' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/employees/:id/disciplinary', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM disciplinary_records WHERE employee_id=? ORDER BY issued_at DESC', [req.params.id]);
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Admin Alerts (Dashboard Notifications)
+app.get('/api/admin/alerts', async (req, res) => {
+    try {
+        const today = dayjs().format('YYYY-MM-DD');
+        const nextMonth = dayjs().add(30, 'day').format('YYYY-MM-DD');
+
+        // Contract Expiry
+        const [contracts] = await pool.query(
+            'SELECT id, first_name, last_name, contract_end_date FROM employees WHERE contract_end_date BETWEEN ? AND ?',
+            [today, nextMonth]
+        );
+        // Probation Expiry
+        const [probations] = await pool.query(
+            'SELECT id, first_name, last_name, probation_end_date FROM employees WHERE probation_end_date BETWEEN ? AND ?',
+            [today, nextMonth]
+        );
+        // Pending Claims
+        const [claims] = await pool.query('SELECT COUNT(*) as count FROM claims WHERE status="pending"');
+
+        res.json({
+            expiringContracts: contracts.map(c => ({ id: c.id, name: `${c.first_name} ${c.last_name}`, date: c.contract_end_date })),
+            expiringProbations: probations.map(p => ({ id: p.id, name: `${p.first_name} ${p.last_name}`, date: p.probation_end_date })),
+            pendingClaimsCount: claims[0].count
+        });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Calendar Events
+app.get('/api/admin/calendar', async (req, res) => {
+    try {
+        const events = [];
+        
+        const [emps] = await pool.query('SELECT id, first_name, last_name, join_date, probation_end_date, contract_end_date FROM employees WHERE status="active"');
+        
+        emps.forEach(e => {
+            const name = `${e.first_name} ${e.last_name}`;
+            if (e.join_date) {
+                // Simplified anniversary for current year
+                const joinDay = dayjs(e.join_date).format('MM-DD');
+                const currYearJoin = `${dayjs().year()}-${joinDay}`;
+                events.push({ date: currYearJoin, type: 'success', content: `ครบรอบเริ่มงาน: ${name}` });
+            }
+            if (e.probation_end_date) {
+                events.push({ date: dayjs(e.probation_end_date).format('YYYY-MM-DD'), type: 'warning', content: `ครบโปร: ${name}` });
+            }
+            if (e.contract_end_date) {
+                events.push({ date: dayjs(e.contract_end_date).format('YYYY-MM-DD'), type: 'error', content: `หมดสัญญา: ${name}` });
+            }
+        });
+
+        // Leaves
+        const [leaves] = await pool.query(`
+            SELECT lr.start_date, lt.name as type_name, e.first_name, e.last_name 
+            FROM leave_requests lr 
+            JOIN leave_types lt ON lr.leave_type_id = lt.id 
+            JOIN employees e ON lr.employee_id = e.id
+            WHERE lr.status = 'approved'
+        `);
+        leaves.forEach(l => {
+            events.push({ date: dayjs(l.start_date).format('YYYY-MM-DD'), type: 'processing', content: `ลา ${l.type_name}: ${l.first_name}` });
+        });
+
+        res.json(events);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Audit Logs
+app.get('/api/admin/audit-logs', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100');
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 runMigrations()

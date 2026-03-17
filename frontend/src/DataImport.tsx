@@ -7,12 +7,13 @@ import type { TableProps } from 'antd';
 import {
     InboxOutlined, UserOutlined, ClockCircleOutlined,
     SearchOutlined, DatabaseOutlined, SyncOutlined,
-    CheckCircleOutlined, UploadOutlined, CalendarOutlined
+    CheckCircleOutlined, CalendarOutlined, FileExcelOutlined
 } from '@ant-design/icons';
 import { parseAttendanceCSV } from './utils/csvProcessor';
 import dayjs, { Dayjs } from 'dayjs';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 
 dayjs.extend(isSameOrBefore);
 
@@ -106,18 +107,39 @@ export const DataImport: React.FC = () => {
         reader.onload = async (e) => {
             try {
                 setUploading(true);
-                const text = e.target?.result as string;
-                const parsed = parseAttendanceCSV(text);
+                let records: any[] = [];
                 
-                if (parsed.length === 0) throw new Error('ไม่พบข้อมูลหรือรูปแบบไม่ถูกต้อง');
+                if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                    const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+                    
+                    // Skip header and map rows
+                    if (jsonData.length > 1) {
+                        records = jsonData.slice(1).map(row => ({
+                            employee_code: String(row[1] || ''),
+                            check_in_time: normalizeDateTime(String(row[5] || ''), String(row[6] || '')),
+                            check_out_time: normalizeDateTime(String(row[7] || ''), String(row[8] || '')),
+                            status: String(row[9] || ''),
+                            late_minutes: 0,
+                        })).filter(r => r.employee_code && r.check_in_time);
+                    }
+                } else {
+                    const text = e.target?.result as string;
+                    const parsed = parseAttendanceCSV(text);
+                    if (parsed.length === 0) throw new Error('ไม่พบข้อมูลหรือรูปแบบไม่ถูกต้อง');
+                    records = parsed.map(r => ({
+                        employee_code: r.employeeId,
+                        check_in_time: normalizeDateTime(r.checkInDate, r.checkInTime),
+                        check_out_time: normalizeDateTime(r.checkOutDate, r.checkOutTime),
+                        status: r.status,
+                        late_minutes: 0,
+                    }));
+                }
 
-                const records = parsed.map(r => ({
-                    employee_code: r.employeeId,
-                    check_in_time: normalizeDateTime(r.checkInDate, r.checkInTime),
-                    check_out_time: normalizeDateTime(r.checkOutDate, r.checkOutTime),
-                    status: r.status,
-                    late_minutes: 0,
-                }));
+                if (records.length === 0) throw new Error('ไม่พบข้อมูลที่สามารถนำเข้าได้');
 
                 const res = await axios.post(`${API}/attendance/import`, { records });
                 
@@ -135,7 +157,12 @@ export const DataImport: React.FC = () => {
                 setUploading(false);
             }
         };
-        reader.readAsText(file, 'UTF-8');
+
+        if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+            reader.readAsArrayBuffer(file);
+        } else {
+            reader.readAsText(file, 'UTF-8');
+        }
         return false; // Prevent auto-upload
     };
 
@@ -307,14 +334,20 @@ export const DataImport: React.FC = () => {
                     <Text type="secondary">ตรวจสอบข้อมูลการลงเวลาทำงาน หรือนำเข้าข้อมูลใหม่จากเครื่องสแกน</Text>
                 </div>
                 <Space>
-                    <Button 
-                        type="primary" 
-                        icon={<UploadOutlined />} 
-                        onClick={() => setIsUploadModalVisible(true)}
-                        size="large"
+                    <Upload 
+                        accept=".csv, .xlsx, .xls"
+                        showUploadList={false}
+                        beforeUpload={handleFileUpload}
                     >
-                        นำเข้าไฟล์ CSV
-                    </Button>
+                        <Button 
+                            type="primary" 
+                            icon={<FileExcelOutlined />} 
+                            loading={uploading}
+                            size="large"
+                        >
+                            Import File (Excel/CSV)
+                        </Button>
+                    </Upload>
                 </Space>
             </div>
 
