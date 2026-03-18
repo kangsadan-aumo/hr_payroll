@@ -343,7 +343,12 @@ app.get('/api/employees', async (req, res) => {
 app.post('/api/employees', async (req, res) => {
     try {
         const { employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number, reports_to } = req.body;
-        const code = employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
+        
+        if (employee_code && !/^\d{5,7}$/.test(employee_code)) {
+            return res.status(400).json({ error: 'รหัสพนักงานต้องเป็นตัวเลข 5-7 หลัก' });
+        }
+
+        const code = employee_code || `EMP${Math.floor(1000 + Math.random() * 9000)}`;
         const [result] = await pool.query(
             `INSERT INTO employees (employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number, reports_to)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -358,10 +363,15 @@ app.post('/api/employees', async (req, res) => {
 app.put('/api/employees/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number, reports_to } = req.body;
+        const { employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number, reports_to } = req.body;
+        
+        if (employee_code && !/^\d{5,7}$/.test(employee_code)) {
+            return res.status(400).json({ error: 'รหัสพนักงานต้องเป็นตัวเลข 5-7 หลัก' });
+        }
+
         const [result] = await pool.query(
-            `UPDATE employees SET first_name=?, last_name=?, department_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?, reports_to=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-            [first_name, last_name, department_id, position, join_date, status, base_salary, phone || null, email || null, id_number || null, reports_to || null, id]
+            `UPDATE employees SET employee_code=?, first_name=?, last_name=?, department_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?, reports_to=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+            [employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone || null, email || null, id_number || null, reports_to || null, id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
         res.json({ message: 'Employee updated' });

@@ -295,7 +295,13 @@ export const Employees: React.FC = () => {
         if (record) {
             setEditingEmployee(record);
             const dep = departmentsList.find(d => d.name === record.department);
-            form.setFieldsValue({ ...record, department_id: dep ? dep.id : null, joinDate: dayjs(record.joinDate) });
+            // Ensure baseSalary from API maps to base_salary in Form
+            form.setFieldsValue({ 
+                ...record, 
+                department_id: dep ? dep.id : null, 
+                joinDate: dayjs(record.joinDate),
+                base_salary: record.baseSalary 
+            });
         } else {
             setEditingEmployee(null);
             form.resetFields();
@@ -308,6 +314,7 @@ export const Employees: React.FC = () => {
     const handleSave = async (values: any) => {
         const nameParts = values.name.split(' ');
         const payload = {
+            employee_code: values.employee_code,
             first_name: nameParts[0],
             last_name: nameParts.slice(1).join(' ') || '',
             department_id: values.department_id,
@@ -347,15 +354,21 @@ export const Employees: React.FC = () => {
 
     const openLeaveQuotaModal = async (record: Employee) => {
         setQuotaEmployee(record);
+        setLeaveQuotas([]); // Clear previous
+        quotaForm.resetFields();
         try {
             const res = await axios.get(`${API}/employees/${record.id}/leave-quotas`);
-            setLeaveQuotas(res.data);
-            const formValues: any = {};
-            res.data.forEach((q: any) => {
-                formValues[`quota_${q.leave_type_id}`] = q.quota_days;
-            });
-            quotaForm.setFieldsValue(formValues);
-            setQuotaModalOpen(true);
+            if (res.data && res.data.length > 0) {
+                setLeaveQuotas(res.data);
+                const formValues: any = {};
+                res.data.forEach((q: any) => {
+                    formValues[`quota_${q.leave_type_id}`] = q.quota_days;
+                });
+                quotaForm.setFieldsValue(formValues);
+                setQuotaModalOpen(true);
+            } else {
+                message.warning('ยังไม่มีการกำหนดประเภทการลาในระบบ');
+            }
         } catch (error) {
             message.error('ไม่สามารถดึงข้อมูลโควตาวันลาได้');
         }
@@ -714,17 +727,29 @@ export const Employees: React.FC = () => {
                 <Form form={form} layout="vertical" onFinish={handleSave} initialValues={{ status: 'active' }}>
                     <Row gutter={16}>
                         <Col span={12}>
+                            <Form.Item 
+                                name="employee_code" 
+                                label="รหัสพนักงาน (5-7 หลัก)" 
+                                rules={[
+                                    { required: true, message: 'กรุณากรอกรหัสพนักงาน' },
+                                    { pattern: /^\d{5,7}$/, message: 'รหัสพนักงานต้องเป็นตัวเลข 5-7 หลัก' }
+                                ]}
+                            >
+                                <Input placeholder="เช่น 12345" maxLength={7} />
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
                             <Form.Item name="name" label="ชื่อ-นามสกุล" rules={[{ required: true, message: 'กรุณากรอกชื่อ' }]}>
                                 <Input placeholder="เช่น สมชาย ใจกล้า" />
                             </Form.Item>
                         </Col>
+                    </Row>
+                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="joinDate" label="วันที่เริ่มปฏิบัติงาน" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]}>
                                 <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
                             </Form.Item>
                         </Col>
-                    </Row>
-                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="department_id" label="แผนก" rules={[{ required: true, message: 'กรุณาเลือกแผนก' }]}>
                                 <Select placeholder="เลือกแผนก">
@@ -732,33 +757,43 @@ export const Employees: React.FC = () => {
                                 </Select>
                             </Form.Item>
                         </Col>
+                    </Row>
+                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="position" label="ตำแหน่ง" rules={[{ required: true, message: 'กรุณากรอกตำแหน่ง' }]}>
                                 <Input placeholder="เช่น HR Admin" />
                             </Form.Item>
                         </Col>
-                    </Row>
-                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="phone" label="เบอร์โทรศัพท์">
                                 <Input placeholder="08x-xxx-xxxx" />
                             </Form.Item>
                         </Col>
+                    </Row>
+                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="email" label="อีเมล">
                                 <Input placeholder="email@company.com" />
                             </Form.Item>
                         </Col>
-                    </Row>
-                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="base_salary" label="เงินเดือนพื้นฐาน (บาท)">
                                 <Input type="number" placeholder="เช่น 25000" prefix="฿" />
                             </Form.Item>
                         </Col>
+                    </Row>
+                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="id_number" label="เลขประจำตัวประชาชน (13 หลัก)" rules={[{ len: 13, message: 'เลขบัตรประชาชนต้องมี 13 หลัก' }]}>
                                 <Input placeholder="1xxxxxxxxxxxx" maxLength={13} />
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                            <Form.Item name="status" label="สถานะการทำงาน" rules={[{ required: true }]}>
+                                <Select>
+                                    <Option value="active">ทำงานอยู่ (Active)</Option>
+                                    <Option value="inactive">ลาออก (Inactive)</Option>
+                                </Select>
                             </Form.Item>
                         </Col>
                     </Row>
@@ -770,16 +805,6 @@ export const Employees: React.FC = () => {
                             ))}
                         </Select>
                     </Form.Item>
-                    <Row gutter={16}>
-                        <Col span={12}>
-                            <Form.Item name="status" label="สถานะการทำงาน" rules={[{ required: true }]}>
-                                <Select>
-                                    <Option value="active">ทำงานอยู่ (Active)</Option>
-                                    <Option value="inactive">ลาออก (Inactive)</Option>
-                                </Select>
-                            </Form.Item>
-                        </Col>
-                    </Row>
                 </Form>
             </Drawer>
 
