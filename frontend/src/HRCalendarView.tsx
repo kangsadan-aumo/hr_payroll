@@ -13,7 +13,7 @@ export const HRCalendarView: React.FC = () => {
     useEffect(() => {
         const fetchEvents = async () => {
             try {
-                const res = await axios.get(${API_BASE}/admin/calendar');
+                const res = await axios.get(`${API_BASE}/admin/calendar`);
                 setEvents(res.data);
             } catch (error) {
                 console.error('Failed to fetch calendar events');

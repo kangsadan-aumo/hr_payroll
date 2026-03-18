@@ -22,7 +22,7 @@ export const GovReports: React.FC = () => {
     const fetchEmployees = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(${API_BASE}/employees');
+            const res = await axios.get(`${API_BASE}/employees`);
             setEmployees(res.data);
         } catch (error) {
             message.error('ไม่สามารถดึงข้อมูลพนักงานได้');
@@ -32,15 +32,15 @@ export const GovReports: React.FC = () => {
     };
 
     const downloadPND1 = () => {
-        window.open(`http://localhost:5000/api/reports/pnd1?month=${month}&year=${year}`, '_blank');
+        window.open(`${API_BASE}/reports/pnd1?month=${month}&year=${year}`, '_blank');
     };
 
     const downloadSSO = () => {
-        window.open(`http://localhost:5000/api/reports/sso?month=${month}&year=${year}`, '_blank');
+        window.open(`${API_BASE}/reports/sso?month=${month}&year=${year}`, '_blank');
     };
 
     const download50Tawi = (empId: string) => {
-        window.open(`http://localhost:5000/api/reports/50tawi/${empId}?year=${tawiYear}`, '_blank');
+        window.open(`${API_BASE}/reports/50tawi/${empId}?year=${tawiYear}`, '_blank');
     };
 
     const months = [

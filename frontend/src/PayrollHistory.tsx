@@ -7,7 +7,7 @@ import { API_BASE } from './config';
 
 const { Title, Text } = Typography;
 
-const API = ${API_BASE}';
+const API = `${API_BASE}`;
 
 interface HistoryRow {
     period_year: number;

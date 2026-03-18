@@ -30,7 +30,7 @@ export const Claims: React.FC = () => {
     const fetchClaims = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(${API_BASE}/claims');
+            const res = await axios.get(`${API_BASE}/claims`);
             setClaims(res.data);
         } catch (err) {
             message.error('ไม่สามารถดึงข้อมูลเบิกจ่ายได้');
@@ -41,7 +41,7 @@ export const Claims: React.FC = () => {
 
     const fetchEmployees = async () => {
         try {
-            const res = await axios.get(${API_BASE}/employees');
+            const res = await axios.get(`${API_BASE}/employees`);
             setEmployees(res.data.map((e: any) => ({ id: e.id, name: e.name })));
         } catch (err) {
             message.error('ไม่สามารถดึงข้อมูลพนักงานได้');
@@ -55,7 +55,7 @@ export const Claims: React.FC = () => {
 
     const handleAddClaim = async (values: any) => {
         try {
-            await axios.post(${API_BASE}/claims', {
+            await axios.post(`${API_BASE}/claims`, {
                 ...values,
                 receipt_date: values.receipt_date.format('YYYY-MM-DD')
             });
@@ -70,7 +70,7 @@ export const Claims: React.FC = () => {
 
     const updateStatus = async (id: number, status: string) => {
         try {
-            await axios.put(`http://localhost:5000/api/claims/${id}/status`, { status });
+            await axios.put(`${API_BASE}/claims/${id}/status`, { status });
             message.success(`อัปเดตสถานะเป็น ${status} สำเร็จ`);
             fetchClaims();
         } catch (err) {
@@ -80,7 +80,7 @@ export const Claims: React.FC = () => {
 
     const deleteClaim = async (id: number) => {
         try {
-            await axios.delete(`http://localhost:5000/api/claims/${id}`);
+            await axios.delete(`${API_BASE}/claims/${id}`);
             message.success('ลบข้อมูลสำเร็จ');
             fetchClaims();
         } catch (err) {

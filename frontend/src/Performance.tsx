@@ -17,7 +17,6 @@ export const Performance: React.FC = () => {
     const [kpiForm] = Form.useForm();
     const [evalForm] = Form.useForm();
 
-    const API_BASE = ${API_BASE}';
 
     const fetchData = async () => {
         setLoading(true);
