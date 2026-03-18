@@ -1413,7 +1413,7 @@ async function runMigrations() {
         )`,
         `CREATE TABLE IF NOT EXISTS leave_types (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
+            name VARCHAR(100) UNIQUE NOT NULL,
             is_unpaid BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`,
@@ -1646,6 +1646,8 @@ async function runMigrations() {
             FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE,
             UNIQUE(employee_id, leave_type_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `DELETE t1 FROM leave_types t1 JOIN leave_types t2 WHERE t1.id > t2.id AND t1.name = t2.name`,
+        `ALTER TABLE leave_types ADD UNIQUE (name)`,
     ];
     for (const sql of migrations) {
         try {
