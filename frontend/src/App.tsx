@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MainLayout } from './MainLayout';
 import { Dashboard } from './Dashboard';
 import { DataImport } from './DataImport';
@@ -8,20 +8,41 @@ import { Settings } from './Settings';
 import { Employees } from './Employees';
 import { Leave } from './Leave';
 import { Claims } from './Claims';
-import { Analytics } from './Analytics';
-import { HRCalendarView } from './HRCalendarView';
-import { AuditLogs } from './AuditLogs';
 import { GovReports } from './GovReports';
+import { Performance } from './Performance';
+import { Assets } from './Assets';
+import { OrgChart } from './OrgChart';
+import { Login } from './Login';
 import './App.css';
 
 function App() {
+  const [user, setUser] = useState<any>(null);
   const [activeMenu, setActiveMenu] = useState('dashboard');
   const [payrollMonth, setPayrollMonth] = useState<{ month: number; year: number } | null>(null);
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('hr_user');
+    if (savedUser) setUser(JSON.parse(savedUser));
+  }, []);
+
+  const handleLoginSuccess = (userData: any) => {
+    setUser(userData);
+    localStorage.setItem('hr_user', JSON.stringify(userData));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('hr_user');
+  };
 
   const handleViewPayroll = (month: number, year: number) => {
     setPayrollMonth({ month, year });
     setActiveMenu('payroll');
   };
+
+  if (!user) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
 
   const renderContent = () => {
     switch (activeMenu) {
@@ -31,6 +52,12 @@ function App() {
         return <DataImport />;
       case 'employees':
         return <Employees />;
+      case 'org-chart':
+        return <OrgChart />;
+      case 'performance':
+        return <Performance />;
+      case 'assets':
+        return <Assets />;
       case 'leave':
         return <Leave />;
       case 'claims':
@@ -39,12 +66,6 @@ function App() {
         return <Payroll initialMonth={payrollMonth} />;
       case 'payroll-history':
         return <PayrollHistory onViewPayroll={handleViewPayroll} />;
-      case 'analytics':
-        return <Analytics />;
-      case 'hr-calendar':
-        return <HRCalendarView />;
-      case 'audit-logs':
-        return <AuditLogs />;
       case 'gov-reports':
         return <GovReports />;
       case 'settings':
@@ -55,7 +76,7 @@ function App() {
   };
 
   return (
-    <MainLayout activeMenu={activeMenu} onMenuClick={setActiveMenu}>
+    <MainLayout activeMenu={activeMenu} onMenuClick={(key) => key === 'logout' ? handleLogout() : setActiveMenu(key)}>
       {renderContent()}
     </MainLayout>
   );

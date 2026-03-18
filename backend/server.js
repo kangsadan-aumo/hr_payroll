@@ -43,6 +43,7 @@ const pool = mysql.createPool({
     database: process.env.DB_NAME || 'hr-payroll-db',
     port: parseInt(process.env.DB_PORT) || 3306,
     connectionLimit: 10,
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : null, // เพิ่มบรรทัดนี้เพื่อรองรับ Cloud DB
     waitForConnections: true,
     queueLimit: 0
 });
@@ -302,18 +303,7 @@ app.get('/api/settings', async (req, res) => {
     }
 });
 
-app.put('/api/settings', async (req, res) => {
-    try {
-        const payload = req.body;
-        await pool.query(
-            `UPDATE system_settings SET company_name=?, tax_id=?, address=?, deduct_excess_sick_leave=?, deduct_excess_personal_leave=?, late_penalty_per_minute=?, auto_deduct_tax=?, auto_deduct_sso=?, payroll_cutoff_date=?, diligence_allowance=? WHERE id=1`,
-            [payload.company_name, payload.tax_id, payload.address, payload.deduct_excess_sick_leave, payload.deduct_excess_personal_leave, payload.late_penalty_per_minute, payload.auto_deduct_tax, payload.auto_deduct_sso, payload.payroll_cutoff_date, payload.diligence_allowance]
-        );
-        res.json({ message: 'Settings updated' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+// REMOVED duplicate route
 
 // ─────────────────────────────────────────────
 // EMPLOYEES
@@ -321,10 +311,12 @@ app.put('/api/settings', async (req, res) => {
 app.get('/api/employees', async (req, res) => {
     try {
         const [rows] = await pool.query(`
-            SELECT e.*, d.name as department_name, s.name as shift_name 
+            SELECT e.*, d.name as department_name, s.name as shift_name, 
+                   CONCAT(m.first_name, ' ', m.last_name) as manager_name
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN shifts s ON e.shift_id = s.id
+            LEFT JOIN employees m ON e.reports_to = m.id
             ORDER BY e.id DESC
         `);
         const formatted = rows.map(r => ({
@@ -338,7 +330,9 @@ app.get('/api/employees', async (req, res) => {
             phone: r.phone || '-',
             email: r.email || `${r.employee_code}@company.com`,
             baseSalary: r.base_salary,
-            id_number: r.id_number
+            id_number: r.id_number,
+            reports_to: r.reports_to,
+            manager_name: r.manager_name || 'ไม่มี'
         }));
         res.json(formatted);
     } catch (error) {
@@ -348,12 +342,12 @@ app.get('/api/employees', async (req, res) => {
 
 app.post('/api/employees', async (req, res) => {
     try {
-        const { employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number } = req.body;
+        const { employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number, reports_to } = req.body;
         const code = employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
         const [result] = await pool.query(
-            `INSERT INTO employees (employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [code, first_name, last_name, department_id, position, join_date, status || 'active', base_salary || 0, phone || null, email || null, id_number || null]
+            `INSERT INTO employees (employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number, reports_to)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [code, first_name, last_name, department_id, position, join_date, status || 'active', base_salary || 0, phone || null, email || null, id_number || null, reports_to || null]
         );
         res.status(201).json({ id: result.insertId, message: 'Employee created' });
     } catch (error) {
@@ -364,10 +358,10 @@ app.post('/api/employees', async (req, res) => {
 app.put('/api/employees/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number } = req.body;
+        const { first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number, reports_to } = req.body;
         const [result] = await pool.query(
-            `UPDATE employees SET first_name=?, last_name=?, department_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-            [first_name, last_name, department_id, position, join_date, status, base_salary, phone || null, email || null, id_number || null, id]
+            `UPDATE employees SET first_name=?, last_name=?, department_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?, reports_to=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+            [first_name, last_name, department_id, position, join_date, status, base_salary, phone || null, email || null, id_number || null, reports_to || null, id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
         res.json({ message: 'Employee updated' });
@@ -742,6 +736,7 @@ app.put('/api/settings', async (req, res) => {
                 payroll_cutoff_date=COALESCE(?, payroll_cutoff_date),
                 diligence_allowance=COALESCE(?, diligence_allowance),
                 updated_at=CURRENT_TIMESTAMP
+            WHERE id = 1
         `, [company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave,
             late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, diligence_allowance]);
         res.json({ message: 'Settings updated' });
@@ -1431,6 +1426,7 @@ async function runMigrations() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS id_number VARCHAR(13) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS reports_to INT DEFAULT NULL REFERENCES employees(id) ON DELETE SET NULL`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS spouse_allowance TINYINT(1) DEFAULT 0`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS children_count INT DEFAULT 0`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS parents_care_count INT DEFAULT 0`,
@@ -1464,6 +1460,60 @@ async function runMigrations() {
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
             FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
             UNIQUE(employee_id, date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS admins (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            role VARCHAR(20) DEFAULT 'admin',
+            name VARCHAR(100),
+            email VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `INSERT IGNORE INTO admins (username, password, name, role) VALUES ('admin', 'admin123', 'System Administrator', 'superadmin')`,
+        `CREATE TABLE IF NOT EXISTS kpis (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            weight DECIMAL(5, 2) DEFAULT 1.0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS performance_evaluations (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            evaluator_id INT,
+            period_name VARCHAR(100),
+            score DECIMAL(5, 2),
+            feedback TEXT,
+            status VARCHAR(20) DEFAULT 'draft',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS assets (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            category VARCHAR(50),
+            serial_number VARCHAR(100) UNIQUE,
+            status VARCHAR(20) DEFAULT 'available',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS employee_assets (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            asset_id INT NOT NULL,
+            assigned_at DATE NOT NULL,
+            returned_at DATE NULL,
+            note TEXT,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS pdpa_consents (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            consent_type VARCHAR(50) NOT NULL,
+            status TINYINT(1) DEFAULT 1,
+            consented_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     ];
     for (const sql of migrations) {
@@ -1883,3 +1933,140 @@ runMigrations()
         console.error('Migration error:', err);
         app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT} (migration failed)`));
     });
+// ─────────────────────────────────────────────
+// 🔐 AUTHENTICATION
+// ─────────────────────────────────────────────
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        const [rows] = await pool.query('SELECT * FROM admins WHERE username = ? AND password = ?', [username, password]);
+        if (rows.length === 0) return res.status(401).json({ error: 'Username หรือ Password ไม่ถูกต้อง' });
+        const user = rows[0];
+        delete user.password;
+        res.json({ user, message: 'เข้าสู่ระบบสำเร็จ' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─────────────────────────────────────────────
+// 📈 PERFORMANCE MANAGEMENT
+// ─────────────────────────────────────────────
+app.get('/api/performance/kpis', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM kpis ORDER BY id ASC');
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/performance/kpis', async (req, res) => {
+    try {
+        const { name, description, weight } = req.body;
+        const [result] = await pool.query('INSERT INTO kpis (name, description, weight) VALUES (?, ?, ?)', [name, description, weight]);
+        res.status(201).json({ id: result.insertId });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/performance/evaluations', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT pe.*, CONCAT(e.first_name, ' ', e.last_name) as employee_name, a.name as evaluator_name
+            FROM performance_evaluations pe
+            JOIN employees e ON pe.employee_id = e.id
+            LEFT JOIN admins a ON pe.evaluator_id = a.id
+            ORDER BY pe.created_at DESC
+        `);
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/performance/evaluations', async (req, res) => {
+    try {
+        const { employee_id, evaluator_id, period_name, score, feedback, status } = req.body;
+        const [result] = await pool.query(
+            'INSERT INTO performance_evaluations (employee_id, evaluator_id, period_name, score, feedback, status) VALUES (?, ?, ?, ?, ?, ?)',
+            [employee_id, evaluator_id, period_name, score, feedback, status || 'draft']
+        );
+        res.status(201).json({ id: result.insertId });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─────────────────────────────────────────────
+// 📂 ASSET MANAGEMENT
+// ─────────────────────────────────────────────
+app.get('/api/assets', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM assets ORDER BY id DESC');
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/assets', async (req, res) => {
+    try {
+        const { name, category, serial_number, status } = req.body;
+        const [result] = await pool.query('INSERT INTO assets (name, category, serial_number, status) VALUES (?, ?, ?, ?)', [name, category, serial_number, status || 'available']);
+        res.status(201).json({ id: result.insertId });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/assets/assignments', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT ea.*, e.first_name, e.last_name, a.name as asset_name, a.category as asset_category, a.serial_number
+            FROM employee_assets ea
+            JOIN employees e ON ea.employee_id = e.id
+            JOIN assets a ON ea.asset_id = a.id
+            ORDER BY ea.assigned_at DESC
+        `);
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/assets/assignments', async (req, res) => {
+    try {
+        const { employee_id, asset_id, assigned_at, note } = req.body;
+        const [result] = await pool.query(
+            'INSERT INTO employee_assets (employee_id, asset_id, assigned_at, note) VALUES (?, ?, ?, ?)',
+            [employee_id, asset_id, assigned_at, note]
+        );
+        await pool.query('UPDATE assets SET status = "assigned" WHERE id = ?', [asset_id]);
+        res.status(201).json({ id: result.insertId });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─────────────────────────────────────────────
+// 📂 PDPA COMPLIANCE
+// ─────────────────────────────────────────────
+app.get('/api/pdpa/consents', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT c.*, CONCAT(e.first_name, ' ', e.last_name) as employee_name
+            FROM pdpa_consents c
+            JOIN employees e ON c.employee_id = e.id
+            ORDER BY c.consented_at DESC
+        `);
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/pdpa/consents', async (req, res) => {
+    try {
+        const { employee_id, consent_type, status } = req.body;
+        await pool.query('INSERT INTO pdpa_consents (employee_id, consent_type, status) VALUES (?, ?, ?)', [employee_id, consent_type, status]);
+        res.status(201).json({ message: 'บันทึกความยินยอมเสร็จสิ้น' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─────────────────────────────────────────────
+// 🌳 ORG CHART
+// ─────────────────────────────────────────────
+app.get('/api/org-chart', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT id, first_name, last_name, position, reports_to, department_id 
+            FROM employees 
+            WHERE status = 'active'
+        `);
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ... rest of the file ...

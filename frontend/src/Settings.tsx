@@ -3,6 +3,7 @@ import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, TimePicker,
 import { SaveOutlined, BankOutlined, FieldTimeOutlined, CalendarOutlined, SafetyCertificateOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axios from 'axios';
+import { API_BASE } from './config';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -35,7 +36,7 @@ export const Settings: React.FC = () => {
     const [editingLeaveRuleId, setEditingLeaveRuleId] = useState<string | null>(null);
     const [editingLeaveTypeId, setEditingLeaveTypeId] = useState<string | null>(null);
 
-    const API_BASE = 'http://localhost:5000/api';
+
 
     // --- Data Fetching ---
     const fetchAllData = async () => {
@@ -55,11 +56,10 @@ export const Settings: React.FC = () => {
                 company_name: s.company_name,
                 taxId: s.tax_id,
                 address: s.address,
-                deductExcessSickLeave: s.deduct_excess_sick_leave,
-                deductExcessPersonalLeave: s.deduct_excess_personal_leave,
-                latePenaltyPerMin: s.late_penalty_per_minute,
-                autoDeductTax: s.auto_deduct_tax,
-                autoDeductSso: s.auto_deduct_sso,
+                autoDeductTax: s.auto_deduct_tax === 1,
+                autoDeductSso: s.auto_deduct_sso === 1,
+                deductExcessSickLeave: s.deduct_excess_sick_leave === 1,
+                deductExcessPersonalLeave: s.deduct_excess_personal_leave === 1,
                 payrollCutoffDate: s.payroll_cutoff_date,
                 diligenceAllowance: s.diligence_allowance
             });
@@ -91,12 +91,13 @@ export const Settings: React.FC = () => {
                 deduct_excess_sick_leave: values.deductExcessSickLeave,
                 deduct_excess_personal_leave: values.deductExcessPersonalLeave,
                 late_penalty_per_minute: values.latePenaltyPerMin,
-                auto_deduct_tax: values.autoDeductTax,
-                auto_deduct_sso: values.autoDeductSso,
+                auto_deduct_tax: values.autoDeductTax ? 1 : 0,
+                auto_deduct_sso: values.autoDeductSso ? 1 : 0,
                 payroll_cutoff_date: values.payrollCutoffDate,
                 diligence_allowance: values.diligenceAllowance
             };
             await axios.put(`${API_BASE}/settings`, payload);
+            await fetchAllData(); // Re-fetch to confirm
             message.success('อัปเดตข้อมูลบริษัทและนโยบายสำเร็จ');
         } catch (error) {
             message.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล');

@@ -24,6 +24,7 @@ import {
 } from 'recharts';
 import axios from 'axios';
 import dayjs from 'dayjs';
+import { API_BASE } from './config';
 
 const { Title, Text } = Typography;
 
@@ -52,10 +53,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         setLoading(true);
         try {
             const [mainRes, payrollRes, attRes, alertRes] = await Promise.all([
-                axios.get('http://localhost:5000/api/dashboard/stats'),
-                axios.get('http://localhost:5000/api/dashboard/payroll-trends'),
-                axios.get('http://localhost:5000/api/dashboard/attendance-stats'),
-                axios.get('http://localhost:5000/api/admin/alerts')
+                axios.get(`${API_BASE}/dashboard/stats`),
+                axios.get(`${API_BASE}/dashboard/payroll-trends`),
+                axios.get(`${API_BASE}/dashboard/attendance-stats`),
+                axios.get(`${API_BASE}/admin/alerts`)
             ]);
             setStats(mainRes.data.stats);
             setAttendanceTrendData(mainRes.data.charts.attendanceTrendData);
@@ -172,7 +173,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                             description={`มีทั้งหมด ${adminAlerts.pendingClaimsCount} รายการที่รอ Admin ตรวจสอบ`}
                                             type="info"
                                             showIcon
-                                            action={<Button size="small" type="default" href="/claims">ไปที่หน้าเบิกจ่าย</Button>}
+                                            action={<Button size="small" type="default" onClick={() => onNavigate?.('claims')}>ไปที่หน้าเบิกจ่าย</Button>}
                                         />
                                     </Col>
                                 )}
@@ -279,7 +280,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                 <div>
                                     <Text strong style={{ display: 'block' }}>พบพนักงานมาสายมากกว่า 3 ครั้งในเดือนนี้ (จำนวน {attendanceStats.frequentLates || 0} คน)</Text>
                                     <Text type="secondary" style={{ display: 'block' }}>มีพนักงานลางานโดยไม่รับค่าจ้าง จำนวน {attendanceStats.unpaidLeaves || 0} วันในเดือนนี้</Text>
-                                    <Text type="secondary" style={{ marginTop: 8, display: 'block' }}>กรุณาตรวจสอบรายงาน <a href="/import">ข้อมูลเข้า-ออกงาน</a> และ <a href="/payroll">บัญชีเงินเดือน</a> เพื่อดูรายละเอียด</Text>
+                                    <Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
+                                        กรุณาตรวจสอบรายงาน <Button type="link" size="small" style={{ padding: 0 }} onClick={() => onNavigate?.('import')}>ข้อมูลเข้า-ออกงาน</Button> และ <Button type="link" size="small" style={{ padding: 0 }} onClick={() => onNavigate?.('payroll')}>บัญชีเงินเดือน</Button> เพื่อดูรายละเอียด
+                                    </Text>
                                 </div>
                             </Space>
                         </div>

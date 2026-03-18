@@ -9,7 +9,7 @@ import {
     SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined,
     CheckCircleOutlined, CloseCircleOutlined, ImportOutlined,
     DownloadOutlined, WarningOutlined, FileTextOutlined, ProfileOutlined,
-    SecurityScanOutlined, UploadOutlined, FileExcelOutlined
+    SecurityScanOutlined, UploadOutlined, FileExcelOutlined, ApartmentOutlined
 } from '@ant-design/icons';
 const { TextArea } = Input;
 const { Option } = Select;
@@ -22,7 +22,7 @@ import Papa from 'papaparse';
 
 const { Dragger } = Upload;
 
-const API = 'http://localhost:5000/api';
+import { API_BASE as API } from './config';
 
 interface Employee {
     id: string;
@@ -36,6 +36,8 @@ interface Employee {
     email: string;
     baseSalary?: number;
     id_number?: string;
+    reports_to?: number;
+    manager_name?: string;
 }
 
 interface CsvRow {
@@ -316,6 +318,7 @@ export const Employees: React.FC = () => {
             email: values.email,
             base_salary: values.base_salary || 0,
             id_number: values.id_number || null,
+            reports_to: values.reports_to || null,
         };
         try {
             if (editingEmployee) {
@@ -425,6 +428,15 @@ export const Employees: React.FC = () => {
             title: 'วันที่เริ่มงาน', dataIndex: 'joinDate', key: 'joinDate',
             render: (date: string) => dayjs(date).format('DD MMM YYYY'),
             sorter: (a, b) => dayjs(a.joinDate).unix() - dayjs(b.joinDate).unix()
+        },
+        { 
+            title: 'หัวหน้างาน (Manager)', key: 'manager', 
+            render: (_, record) => (
+                <div style={{ fontSize: 13, color: record.manager_name === 'ไม่มี' ? '#bfbfbf' : '#1890ff' }}>
+                    <ApartmentOutlined style={{ marginRight: 4 }} />
+                    {record.manager_name}
+                </div>
+            )
         },
         {
             title: 'สถานะ', key: 'status',
@@ -749,6 +761,16 @@ export const Employees: React.FC = () => {
                                 <Input placeholder="1xxxxxxxxxxxx" maxLength={13} />
                             </Form.Item>
                         </Col>
+                    </Row>
+                    <Divider orientation={"left" as any} plain><Text type="secondary" style={{ fontSize: 13, color: '#1890ff' }}>สายงานและการรายงานตัว (Reporting Structure)</Text></Divider>
+                    <Form.Item name="reports_to" label="พนักงานที่รายงานตัวต่อ (Reports To / Manager)" tooltip="ใช้สำหรับสร้างผังโครงสร้างพื้นฐานของบริษัท">
+                        <Select placeholder="ค้นหาและเลือกชื่อหัวหน้างาน" allowClear showSearch optionFilterProp="children">
+                            {employees.filter(e => e.id !== editingEmployee?.id).map(e => (
+                                <Option key={e.id} value={parseInt(e.id)}>{e.name} ({e.position})</Option>
+                            ))}
+                        </Select>
+                    </Form.Item>
+                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="status" label="สถานะการทำงาน" rules={[{ required: true }]}>
                                 <Select>

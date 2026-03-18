@@ -44,8 +44,10 @@ CREATE TABLE IF NOT EXISTS employees (
     email VARCHAR(150) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    reports_to INT,
     FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
-    FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE SET NULL
+    FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE SET NULL,
+    FOREIGN KEY (reports_to) REFERENCES employees(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 4. Leave Types (ประเภทการลา)
@@ -166,3 +168,70 @@ INSERT INTO leave_quota_rules (tenure_years, vacation_days) VALUES
 
 INSERT INTO system_settings (company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave, late_penalty_per_minute, payroll_cutoff_date)
 VALUES ('บริษัท ทดสอบ จำกัด', '0123456789012', '123 ถ.สุขุมวิท กรุงเทพฯ', 1, 1, 10.00, 25);
+
+-- 12. Admins Table
+CREATE TABLE IF NOT EXISTS admins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(20) DEFAULT 'admin',
+    name VARCHAR(100),
+    email VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 13. KPIs & OKRs
+CREATE TABLE IF NOT EXISTS kpis (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    weight DECIMAL(5, 2) DEFAULT 1.0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS performance_evaluations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT NOT NULL,
+    evaluator_id INT,
+    period_name VARCHAR(100), -- e.g., 'Q1 2024', 'Annual 2024'
+    score DECIMAL(5, 2),
+    feedback TEXT,
+    status VARCHAR(20) DEFAULT 'draft', -- draft, completed
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+    FOREIGN KEY (evaluator_id) REFERENCES admins(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 14. Asset Management
+CREATE TABLE IF NOT EXISTS assets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(50), -- Laptop, Mobile, Uniform, etc.
+    serial_number VARCHAR(100) UNIQUE,
+    status VARCHAR(20) DEFAULT 'available', -- available, assigned, maintenance, broken
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS employee_assets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT NOT NULL,
+    asset_id INT NOT NULL,
+    assigned_at DATE NOT NULL,
+    returned_at DATE NULL,
+    note TEXT,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+    FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 15. PDPA Compliance
+CREATE TABLE IF NOT EXISTS pdpa_consents (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT NOT NULL,
+    consent_type VARCHAR(50) NOT NULL, -- personal_data, marketing, etc.
+    status TINYINT(1) DEFAULT 1, -- 1=consented, 0=revoked
+    consented_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+);
+
+-- Default Admin
+INSERT INTO admins (username, password, name, role) VALUES ('admin', 'admin123', 'System Administrator', 'superadmin');

@@ -16,6 +16,8 @@ import {
     AuditOutlined,
     BarChartOutlined,
     FileProtectOutlined,
+    ApartmentOutlined,
+    LaptopOutlined,
 } from '@ant-design/icons';
 import './MainLayout.css';
 
@@ -35,13 +37,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, on
         { key: 'dashboard', icon: <DashboardOutlined />, label: 'Dashboard (หน้าแรก)' },
         { key: 'import', icon: <ImportOutlined />, label: 'นำเข้าข้อมูลเข้า-ออกงาน' },
         { key: 'employees', icon: <TeamOutlined />, label: 'จัดการพนักงาน' },
+        { key: 'org-chart', icon: <ApartmentOutlined />, label: 'โครงสร้างองค์กร (Org Chart)' },
+        { key: 'performance', icon: <BarChartOutlined />, label: 'การประเมินผล (Performance)' },
+        { key: 'assets', icon: <LaptopOutlined />, label: 'ทรัพย์สิน & PDPA' },
         { key: 'leave', icon: <CalendarOutlined />, label: 'อนุมัติการลา' },
         { key: 'hr-calendar', icon: <CalendarOutlined style={{ color: '#ff4d4f' }} />, label: 'ปฏิทินงาน HR' },
         { key: 'claims', icon: <AuditOutlined />, label: 'สวัสดิการและเบิกจ่าย' },
         { key: 'payroll', icon: <DollarOutlined />, label: 'จัดการเงินเดือน' },
         { key: 'payroll-history', icon: <HistoryOutlined />, label: 'ประวัติเงินเดือน' },
-        { key: 'analytics', icon: <BarChartOutlined />, label: 'รายงานและวิเคราะห์' },
-        { key: 'audit-logs', icon: <HistoryOutlined style={{ color: '#ff7a45' }} />, label: 'ประวัติการใช้งาน (Logs)' },
         { key: 'gov-reports', icon: <FileProtectOutlined />, label: 'รายงานรัฐบาล (Compliance)' },
         { key: 'settings', icon: <SettingOutlined />, label: 'ตั้งค่าระบบ' },
     ];
