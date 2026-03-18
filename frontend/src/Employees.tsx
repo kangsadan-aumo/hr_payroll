@@ -369,8 +369,8 @@ export const Employees: React.FC = () => {
             } else {
                 message.warning('ยังไม่มีการกำหนดประเภทการลาในระบบ');
             }
-        } catch (error) {
-            message.error('ไม่สามารถดึงข้อมูลโควตาวันลาได้');
+        } catch (error: any) {
+            message.error(error.response?.data?.error || 'ไม่สามารถบันทึกโควตาวันลาได้');
         }
     };
 

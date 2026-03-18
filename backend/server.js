@@ -282,26 +282,8 @@ app.get('/api/dashboard/stats', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-app.get('/api/departments', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM departments ORDER BY id ASC');
-        res.json(rows);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+// Settings and Departments moved down for better organization
 
-// ─────────────────────────────────────────────
-// SETTINGS
-// ─────────────────────────────────────────────
-app.get('/api/settings', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM system_settings LIMIT 1');
-        res.json(rows[0] || {});
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
 
 // REMOVED duplicate route
 
@@ -399,18 +381,6 @@ app.post('/api/employees/import', async (req, res) => {
             return res.status(400).json({ error: 'Invalid data format' });
         }
         let created = 0, updated = 0, errors = [];
-        for (const emp of employees) {
-            try {
-                let deptId = null;
-                if (emp.department) {
-                    const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ?', [emp.department]);
-                    if (deptRows.length > 0) {
-                        deptId = deptRows[0].id;
-                    } else {
-                        const [newDept] = await pool.query('INSERT INTO departments (name) VALUES (?)', [emp.department]);
-                        deptId = newDept.insertId;
-                    }
-                }
                 if (emp.id) {
                     const [exist] = await pool.query('SELECT id FROM employees WHERE id = ?', [emp.id]);
                     if (exist.length > 0) {
@@ -1645,6 +1615,24 @@ async function runMigrations() {
             status TINYINT(1) DEFAULT 1,
             consented_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS leave_quota_rules (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            tenure_years INT NOT NULL,
+            vacation_days INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS employee_leave_quotas (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            leave_type_id INT NOT NULL,
+            quota_days DECIMAL(5, 2) DEFAULT 0.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE,
+            UNIQUE(employee_id, leave_type_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     ];
     for (const sql of migrations) {
