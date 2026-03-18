@@ -15,7 +15,7 @@ export const AuditLogs: React.FC = () => {
     const fetchLogs = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(${API_BASE}/admin/audit-logs');
+            const res = await axios.get(`${API_BASE}/admin/audit-logs`);
             setLogs(res.data);
         } catch (error) {
             console.error('Failed to fetch audit logs');

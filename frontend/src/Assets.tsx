@@ -19,7 +19,6 @@ export const Assets: React.FC = () => {
     const [assetForm] = Form.useForm();
     const [assignForm] = Form.useForm();
 
-    const API_BASE = ${API_BASE}';
 
     const fetchData = async () => {
         setLoading(true);
