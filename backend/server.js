@@ -282,7 +282,16 @@ app.get('/api/dashboard/stats', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// Settings and Departments moved down for better organization
+app.get('/api/departments', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM departments ORDER BY id ASC');
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// ─────────────────────────────────────────────
+// Settings moved down for better organization
 
 
 // REMOVED duplicate route
