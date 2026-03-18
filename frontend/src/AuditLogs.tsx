@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Table, Card, Typography, Tag, Input } from 'antd';
 import { HistoryOutlined, SearchOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { API_BASE } from './config';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
@@ -14,7 +15,7 @@ export const AuditLogs: React.FC = () => {
     const fetchLogs = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('http://localhost:5000/api/admin/audit-logs');
+            const res = await axios.get(${API_BASE}/admin/audit-logs');
             setLogs(res.data);
         } catch (error) {
             console.error('Failed to fetch audit logs');

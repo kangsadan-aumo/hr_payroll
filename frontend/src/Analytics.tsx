@@ -3,6 +3,7 @@ import { Card, Row, Col, Typography, Button, Space, message, Table } from 'antd'
 import { FilePdfOutlined, PieChartOutlined, LineChartOutlined } from '@ant-design/icons';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import axios from 'axios';
+import { API_BASE } from './config';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -17,7 +18,7 @@ export const Analytics: React.FC = () => {
     const fetchCostSummary = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('http://localhost:5000/api/analytics/cost-summary');
+            const res = await axios.get(${API_BASE}/analytics/cost-summary');
             setCostData(res.data);
         } catch (err) {
             message.error('ไม่สามารถดึงข้อมูลสรุปต้นทุนได้');

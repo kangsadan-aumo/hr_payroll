@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select, Tag, Space, Card, Typography, message } from 'antd';
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { API_BASE } from './config';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
@@ -29,7 +30,7 @@ export const Claims: React.FC = () => {
     const fetchClaims = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('http://localhost:5000/api/claims');
+            const res = await axios.get(${API_BASE}/claims');
             setClaims(res.data);
         } catch (err) {
             message.error('ไม่สามารถดึงข้อมูลเบิกจ่ายได้');
@@ -40,7 +41,7 @@ export const Claims: React.FC = () => {
 
     const fetchEmployees = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/employees');
+            const res = await axios.get(${API_BASE}/employees');
             setEmployees(res.data.map((e: any) => ({ id: e.id, name: e.name })));
         } catch (err) {
             message.error('ไม่สามารถดึงข้อมูลพนักงานได้');
@@ -54,7 +55,7 @@ export const Claims: React.FC = () => {
 
     const handleAddClaim = async (values: any) => {
         try {
-            await axios.post('http://localhost:5000/api/claims', {
+            await axios.post(${API_BASE}/claims', {
                 ...values,
                 receipt_date: values.receipt_date.format('YYYY-MM-DD')
             });

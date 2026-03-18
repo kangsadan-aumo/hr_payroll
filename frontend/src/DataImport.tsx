@@ -13,6 +13,7 @@ import { parseAttendanceCSV } from './utils/csvProcessor';
 import dayjs, { Dayjs } from 'dayjs';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import axios from 'axios';
+import { API_BASE } from './config';
 import * as XLSX from 'xlsx';
 
 dayjs.extend(isSameOrBefore);
@@ -20,7 +21,7 @@ dayjs.extend(isSameOrBefore);
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
-const API = 'http://localhost:5000/api';
+const API = `${API_BASE}`;
 
 interface DbSummary {
     employeeId: string;

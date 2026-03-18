@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Tree, Typography, Spin, Empty, Avatar, Space, message, Alert, Divider } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { API_BASE } from './config';
 
 const { Title, Text } = Typography;
 
@@ -9,7 +10,6 @@ export const OrgChart: React.FC = () => {
     const [treeData, setTreeData] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
 
-    const API_BASE = 'http://localhost:5000/api';
 
     const buildTree = (employees: any[], parentId: any = null): any[] => {
         return employees

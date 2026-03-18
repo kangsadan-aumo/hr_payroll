@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Badge, Card, Typography, Alert } from 'antd';
 import { CalendarOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { API_BASE } from './config';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
@@ -12,7 +13,7 @@ export const HRCalendarView: React.FC = () => {
     useEffect(() => {
         const fetchEvents = async () => {
             try {
-                const res = await axios.get('http://localhost:5000/api/admin/calendar');
+                const res = await axios.get(${API_BASE}/admin/calendar');
                 setEvents(res.data);
             } catch (error) {
                 console.error('Failed to fetch calendar events');

@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axios from 'axios';
+import { API_BASE } from './config';
 import * as XLSX from 'xlsx';
 
 const { Title, Text } = Typography;
@@ -31,7 +32,7 @@ interface PayrollRecord {
     isPreview?: boolean;
 }
 
-const API = 'http://localhost:5000/api';
+const API = `${API_BASE}`;
 
 export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } | null }> = ({ initialMonth }) => {
     const [payrollData, setPayrollData] = useState<PayrollRecord[]>([]);

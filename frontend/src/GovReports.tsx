@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Select, Button, Row, Col, Typography, Space, Table, message, Divider, Tag } from 'antd';
 import { FileProtectOutlined, DownloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { API_BASE } from './config';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -21,7 +22,7 @@ export const GovReports: React.FC = () => {
     const fetchEmployees = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('http://localhost:5000/api/employees');
+            const res = await axios.get(${API_BASE}/employees');
             setEmployees(res.data);
         } catch (error) {
             message.error('ไม่สามารถดึงข้อมูลพนักงานได้');

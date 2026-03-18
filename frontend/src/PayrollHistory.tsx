@@ -3,10 +3,11 @@ import { Card, Table, Typography, Tag, Button, Space, Statistic, Row, Col, Toolt
 import type { TableProps } from 'antd';
 import { HistoryOutlined, DollarOutlined, TeamOutlined, EyeOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { API_BASE } from './config';
 
 const { Title, Text } = Typography;
 
-const API = 'http://localhost:5000/api';
+const API = ${API_BASE}';
 
 interface HistoryRow {
     period_year: number;

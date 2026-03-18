@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Tabs, Table, Button, Modal, Form, Input, InputNumber, Select, message, Typography, Space, Tag, Divider, Row, Col, Alert } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined, FileSearchOutlined, StarOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { API_BASE } from './config';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -16,7 +17,7 @@ export const Performance: React.FC = () => {
     const [kpiForm] = Form.useForm();
     const [evalForm] = Form.useForm();
 
-    const API_BASE = 'http://localhost:5000/api';
+    const API_BASE = ${API_BASE}';
 
     const fetchData = async () => {
         setLoading(true);

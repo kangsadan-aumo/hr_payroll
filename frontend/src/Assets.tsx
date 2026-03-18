@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Tabs, Table, Button, Modal, Form, Input, Select, message, Typography, Space, Tag, Alert, DatePicker, Popconfirm } from 'antd';
 import { LaptopOutlined, MobileOutlined, SolutionOutlined, SafetyCertificateOutlined, PlusOutlined, EditOutlined, DeleteOutlined, HistoryOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { API_BASE } from './config';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -18,7 +19,7 @@ export const Assets: React.FC = () => {
     const [assetForm] = Form.useForm();
     const [assignForm] = Form.useForm();
 
-    const API_BASE = 'http://localhost:5000/api';
+    const API_BASE = ${API_BASE}';
 
     const fetchData = async () => {
         setLoading(true);
