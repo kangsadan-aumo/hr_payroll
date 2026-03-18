@@ -12,6 +12,7 @@ import { GovReports } from './GovReports';
 import { Performance } from './Performance';
 import { Assets } from './Assets';
 import { OrgChart } from './OrgChart';
+import { HRCalendarView } from './HRCalendarView';
 import { Login } from './Login';
 import './App.css';
 
@@ -60,6 +61,8 @@ function App() {
         return <Assets />;
       case 'leave':
         return <Leave />;
+      case 'hr-calendar':
+        return <HRCalendarView />;
       case 'claims':
         return <Claims />;
       case 'payroll':
