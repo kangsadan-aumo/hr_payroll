@@ -381,6 +381,18 @@ app.post('/api/employees/import', async (req, res) => {
             return res.status(400).json({ error: 'Invalid data format' });
         }
         let created = 0, updated = 0, errors = [];
+        for (const emp of employees) {
+            try {
+                let deptId = null;
+                if (emp.department) {
+                    const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ?', [emp.department]);
+                    if (deptRows.length > 0) {
+                        deptId = deptRows[0].id;
+                    } else {
+                        const [newDept] = await pool.query('INSERT INTO departments (name) VALUES (?)', [emp.department]);
+                        deptId = newDept.insertId;
+                    }
+                }
                 if (emp.id) {
                     const [exist] = await pool.query('SELECT id FROM employees WHERE id = ?', [emp.id]);
                     if (exist.length > 0) {
