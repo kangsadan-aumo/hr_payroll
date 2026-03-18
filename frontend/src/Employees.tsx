@@ -828,7 +828,7 @@ export const Employees: React.FC = () => {
                                         title: 'จัดการ', key: 'op', 
                                         render: (_, r) => (
                                             <Space>
-                                                <Button size="small" icon={<DownloadOutlined />} href={`http://localhost:5000/${r.file_path}`} target="_blank" />
+                                                <Button size="small" icon={<DownloadOutlined />} href={`${API.replace('/api', '')}/${r.file_path}`} target="_blank" />
                                                 <Popconfirm title="ลบเอกสารนี้?" onConfirm={() => handleDeleteDoc(r.id)}>
                                                     <Button size="small" danger icon={<DeleteOutlined />} />
                                                 </Popconfirm>
