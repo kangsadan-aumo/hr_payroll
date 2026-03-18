@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+app.use(cors()); // อนุญาตให้ทุกโดเมน (Origins) เข้าถึงได้ ป้องกันปัญหา CORS บน Production
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
