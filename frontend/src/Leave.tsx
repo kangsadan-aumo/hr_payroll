@@ -96,7 +96,6 @@ export const Leave: React.FC = () => {
         try {
             const startStr = values.dateRange[0].format('YYYY-MM-DD');
             const endStr = values.dateRange[1].format('YYYY-MM-DD');
-            // Mock total days logic
             const dayDiff = values.dateRange[1].diff(values.dateRange[0], 'days') + 1;
 
             const payload = {

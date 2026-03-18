@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Tree, Typography, Spin, Empty, Avatar, Space, message, Alert, Divider } from 'antd';
+import { Card, Tree, Typography, Spin, Empty, Avatar, Space, message, Alert, Divider, Badge } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE } from './config';
@@ -9,7 +9,6 @@ const { Title, Text } = Typography;
 export const OrgChart: React.FC = () => {
     const [treeData, setTreeData] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
-
 
     const buildTree = (employees: any[], parentId: any = null): any[] => {
         return employees
@@ -34,7 +33,6 @@ export const OrgChart: React.FC = () => {
         try {
             const res = await axios.get(`${API_BASE}/org-chart`);
             const employees = res.data;
-            // Build tree from the root (those who report to nobody)
             const roots = buildTree(employees, null);
             setTreeData(roots);
         } catch (error) {
@@ -50,12 +48,12 @@ export const OrgChart: React.FC = () => {
         <div>
             <div style={{ marginBottom: 24 }}>
                 <Title level={2} style={{ margin: 0 }}>โครงสร้างองค์กร (Organizational Chart)</Title>
-                <Text type="secondary">ผังโครงสร้างการบังคับบัญชาและสายงานรายงาน (Reporting Structure)</Text>
+                <Text type="secondary">ผังโครงสร้างการบังคับบัญชาและสายงานรายงาน</Text>
             </div>
 
             <Alert 
                 message="วิธีการตั้งค่าสายงานรายงาน" 
-                description="คุณสามารถเข้าจัดการว่าพนักงานคนใดรายงานตัวต่อ (Reports To) ใคร ได้ที่หน้าจัดการพนักงาน (Employees) โดยการแก้ไขข้อมูลรายบุคคล"
+                description="คุณสามารถเข้าจัดการว่าพนักงานคนใดรายงานตัวต่อใคร ได้ที่หน้าจัดการพนักงาน"
                 type="info" showIcon style={{ marginBottom: 24 }}
             />
 
@@ -81,15 +79,11 @@ export const OrgChart: React.FC = () => {
             <Divider />
             <div style={{ textAlign: 'center' }}>
                 <Space>
-                    <Badge status="processing" text="ระดับผู้บริหาร (Root Level)" />
-                    <Badge status="success" text="ระดับหัวหน้างาน (Managers)" />
-                    <Badge status="default" text="พนักงานทั่วไป (Staff)" />
+                    <Badge status="processing" text="ระดับผู้บริหาร" />
+                    <Badge status="success" text="ระดับหัวหน้างาน" />
+                    <Badge status="default" text="พนักงานทั่วไป" />
                 </Space>
             </div>
         </div>
     );
 };
-
-const Badge = ({ status, text }: { status: any, text: string }) => (
-    <Space><span className={`ant-badge-status-dot ant-badge-status-${status}`} /><Text type="secondary">{text}</Text></Space>
-);

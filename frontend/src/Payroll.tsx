@@ -73,7 +73,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 if (setRes.data && setRes.data.company_name) {
                     setCompanyName(setRes.data.company_name);
                 }
-            } catch (e) { console.log('No settings found'); }
+            } catch (e) { /* silent */ }
 
         } catch (error) {
             message.error('ไม่สามารถเรียกข้อมูลบัญชีเงินเดือนได้');
@@ -210,9 +210,8 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
 
-        // Auto-size columns slightly
         ws['!cols'] = Array(12).fill({ wch: 15 });
-        ws['!cols'][1] = { wch: 25 }; // Name
+        ws['!cols'][1] = { wch: 25 }; 
 
         XLSX.utils.book_append_sheet(wb, ws, "Payroll");
         XLSX.writeFile(wb, `payroll_${currentYear}_${String(currentMonth).padStart(2, '0')}.xlsx`);
@@ -317,7 +316,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
 
     return (
         <div>
-            {/* ── Header ── */}
+            {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
                 <div>
                     <Title level={2} style={{ margin: 0 }}>ประมวลผลเงินเดือน (Payroll)</Title>
@@ -333,22 +332,20 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                     >
                         คำนวณเงินเดือน
                     </Button>
-                    <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>Export CSV</Button>
+                    <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>Export Excel</Button>
                     <Button type="primary" icon={<CheckCircleOutlined />} onClick={handleApprovePayroll}>อนุมัติจ่าย</Button>
                 </Space>
             </div>
 
-            {/* ── Preview banner ── */}
             {isPreview && (
                 <Alert
                     message="โหมด Preview — เงินเดือนยังไม่ถูกบันทึก"
-                    description="กด 'คำนวณเงินเดือน' เพื่อคำนวณจากข้อมูลจริง (attendance + leave) และบันทึกลงฐานข้อมูล"
+                    description="กด 'คำนวณเงินเดือน' เพื่อคำนวณจากข้อมูลจริง และบันทึกลงฐานข้อมูล"
                     type="warning" showIcon icon={<InfoCircleOutlined />}
                     style={{ marginBottom: 16 }}
                 />
             )}
 
-            {/* ── Stats ── */}
             <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
                 <Col xs={24} sm={8}>
                     <Card bordered={false} style={{ borderRadius: 8, background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)' }}>
@@ -377,7 +374,6 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 </Col>
             </Row>
 
-            {/* ── Table ── */}
             <Card bordered={false} style={{ borderRadius: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
                     <Space>
@@ -397,11 +393,10 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                     rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys, getCheckboxProps: r => ({ disabled: r.status === 'paid' }) }}
                     columns={columns} dataSource={filteredData} rowKey="employeeId"
                     loading={loading} pagination={{ pageSize: 15 }} scroll={{ x: 1000 }}
-                    rowClassName={r => r.status === 'paid' ? 'ant-table-row-paid' : ''}
                 />
             </Card>
 
-            {/* ── PAYSLIP MODAL ── */}
+            {/* PAYSLIP MODAL */}
             <Modal
                 title={`สลิปเงินเดือน — ${monthFilter?.format('MMMM YYYY')}`}
                 open={isPayslipModalVisible}
@@ -423,16 +418,16 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                         <Divider style={{ margin: '10px 0' }} />
                         <Row style={{ marginBottom: 16 }}>
                             <Col span={12}>
-                                <div><Text className="label">รหัสพนักงาน:</Text> <Text strong>{selectedEmployee.employeeId}</Text></div>
-                                <div><Text className="label">ชื่อ-สกุล:</Text> <Text strong>{selectedEmployee.name}</Text></div>
+                                <div><Text>รหัสพนักงาน:</Text> <Text strong>{selectedEmployee.employeeId}</Text></div>
+                                <div><Text>ชื่อ-สกุล:</Text> <Text strong>{selectedEmployee.name}</Text></div>
                             </Col>
                             <Col span={12} style={{ textAlign: 'right' }}>
-                                <div><Text className="label">แผนก:</Text> <Text strong>{selectedEmployee.department}</Text></div>
-                                <div><Text className="label">สถานะ:</Text> {selectedEmployee.status === 'paid' ? <Tag color="blue">จ่ายแล้ว</Tag> : <Tag color="orange">รอตรวจสอบ</Tag>}</div>
+                                <div><Text>แผนก:</Text> <Text strong>{selectedEmployee.department}</Text></div>
+                                <div><Text>สถานะ:</Text> {selectedEmployee.status === 'paid' ? <Tag color="blue">จ่ายแล้ว</Tag> : <Tag color="orange">รอตรวจสอบ</Tag>}</div>
                             </Col>
                         </Row>
-                        <div className="payslip-grid" style={{ display: 'flex', borderTop: '2px solid #333', borderBottom: '2px solid #333' }}>
-                            <div className="payslip-col" style={{ flex: 1, padding: '10px 15px 10px 0', borderRight: '1px solid #eee' }}>
+                        <div style={{ display: 'flex', borderTop: '2px solid #333', borderBottom: '2px solid #333' }}>
+                            <div style={{ flex: 1, padding: '10px 15px 10px 0', borderRight: '1px solid #eee' }}>
                                 <Text strong style={{ display: 'block', marginBottom: 8 }}>รายได้ (Earnings)</Text>
                                 {[
                                     ['เงินเดือนพื้นฐาน', selectedEmployee.baseSalary],
@@ -440,13 +435,13 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                                     ['เบี้ยขยัน', selectedEmployee.earnings.diligenceAllowance || 0],
                                     ['โบนัส', selectedEmployee.earnings.bonus],
                                 ].map(([label, val]) => (
-                                    <div key={label as string} className="payslip-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                    <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                                         <Text>{label as string}</Text>
                                         <Text>{formatCurrency(val as number)}</Text>
                                     </div>
                                 ))}
                             </div>
-                            <div className="payslip-col" style={{ flex: 1, padding: '10px 0 10px 15px' }}>
+                            <div style={{ flex: 1, padding: '10px 0 10px 15px' }}>
                                 <Text strong type="danger" style={{ display: 'block', marginBottom: 8 }}>รายการหัก (Deductions)</Text>
                                 {[
                                     ['ภาษีหัก ณ ที่จ่าย', selectedEmployee.deductions.tax],
@@ -454,23 +449,23 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                                     ['ค่าปรับมาสาย', selectedEmployee.deductions.latePenalty],
                                     ['ลาไม่รับค่าจ้าง', selectedEmployee.deductions.unpaidLeave],
                                 ].map(([label, val]) => (
-                                    <div key={label as string} className="payslip-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                    <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                                         <Text>{label as string}</Text>
                                         <Text type="danger">{formatCurrency(val as number)}</Text>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                        <div className="summary" style={{ display: 'flex', marginTop: 12, padding: '12px 10px', background: '#f8f8f8', borderRadius: 4 }}>
-                            <div className="summary-item" style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', marginTop: 12, padding: '12px 10px', background: '#f8f8f8', borderRadius: 4 }}>
+                            <div style={{ flex: 1 }}>
                                 <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>รวมรายได้</Text>
                                 <Text strong style={{ fontSize: 18, color: '#52c41a' }}>{formatCurrency(calculateTotalGross(selectedEmployee))}</Text>
                             </div>
-                            <div className="summary-item" style={{ flex: 1 }}>
+                            <div style={{ flex: 1 }}>
                                 <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>รวมรายการหัก</Text>
                                 <Text strong style={{ fontSize: 18, color: '#ff4d4f' }}>{formatCurrency(calculateTotalDeduction(selectedEmployee))}</Text>
                             </div>
-                            <div className="summary-item" style={{ flex: 1, textAlign: 'right' }}>
+                            <div style={{ flex: 1, textAlign: 'right' }}>
                                 <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>รายได้สุทธิ์ (Net Pay)</Text>
                                 <Text strong style={{ fontSize: 24, color: '#1890ff' }}>{formatCurrency(calculateNetSalary(selectedEmployee))}</Text>
                             </div>
@@ -479,7 +474,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 )}
             </Modal>
 
-            {/* ── EDIT DRAWER ── */}
+            {/* EDIT DRAWER */}
             <Drawer
                 title={
                     <div>
@@ -506,149 +501,50 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                         <Alert
                             type="info" showIcon
                             message={`เงินเดือนพื้นฐาน: ${formatCurrency(editingEmployee.baseSalary)}`}
-                            description="การแก้ไขจะคำนวณยอดสุทธิ์ใหม่อัตโนมัติเมื่อส่งเงินเดือนพื้นฐาน + รายได้อื่นๆ - รายการหักทั้งหมด"
+                            description="การแก้ไขจะคำนวณยอดสุทธิ์ใหม่อัตโนมัติ"
                             style={{ marginBottom: 20 }}
                         />
-                        <Form form={editForm} layout="vertical" requiredMark={false}>
-                            <div style={{ color: '#52c41a', fontWeight: 600, marginBottom: 12, borderBottom: '1px solid #52c41a22', paddingBottom: 6 }}>
-                                ➕ รายได้เพิ่มเติม
-                            </div>
-
-                            {/* OT Calculator */}
-                            <div style={{ background: '#f5f8ff', padding: '12px 16px', borderRadius: 8, marginBottom: 16, border: '1px dashed #91caff' }}>
-                                <div style={{ fontSize: 13, fontWeight: 600, color: '#1890ff', marginBottom: 8 }}>
-                                    <CalculatorOutlined /> เครื่องมือคำนวณ OT อัตโนมัติ
-                                </div>
-                                <Row gutter={12} align="bottom">
-                                    <Col span={7}>
-                                        <div style={{ fontSize: 12, marginBottom: 4 }}>ชั่วโมงทำ OT</div>
-                                        <InputNumber min={0} value={otHelperHours} onChange={setOtHelperHours} style={{ width: '100%' }} placeholder="ชม." />
-                                    </Col>
-                                    <Col span={8}>
-                                        <div style={{ fontSize: 12, marginBottom: 4 }}>อัตรา (ตัวคูณ)</div>
+                        <Form form={editForm} layout="vertical">
+                            <div style={{ color: '#52c41a', fontWeight: 600, marginBottom: 12 }}>➕ รายได้เพิ่มเติม</div>
+                            <Row gutter={12} align="bottom">
+                                <Col span={7}>
+                                    <Form.Item label="ชม. OT">
+                                        <InputNumber min={0} value={otHelperHours} onChange={setOtHelperHours} style={{ width: '100%' }} />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={8}>
+                                    <Form.Item label="ตัวคูณ">
                                         <Select value={otHelperRate} onChange={setOtHelperRate} style={{ width: '100%' }}>
-                                            <Option value={1.0}>1.0 เท่า</Option>
-                                            <Option value={1.5}>1.5 เท่า (วันปกติ)</Option>
-                                            <Option value={2.0}>2.0 เท่า</Option>
-                                            <Option value={3.0}>3.0 เท่า</Option>
+                                            <Option value={1.5}>1.5</Option>
+                                            <Option value={2.0}>2.0</Option>
                                         </Select>
-                                    </Col>
-                                    <Col span={9}>
-                                        <Button
-                                            type="primary"
-                                            ghost
-                                            style={{ width: '100%' }}
-                                            onClick={() => {
-                                                const h = otHelperHours || 0;
-                                                const r = otHelperRate || 1.5;
-                                                const base = editingEmployee?.baseSalary || 0;
-                                                const calculatedPay = (base / 30 / 8) * h * r;
-                                                editForm.setFieldsValue({ overtime_pay: Number(calculatedPay.toFixed(2)) });
-                                                message.success(`เติมค่าเงิน OT: ${calculatedPay.toFixed(2)} บาท`);
-                                            }}
-                                        >
-                                            คำนวณ & เติมค่า
-                                        </Button>
-                                    </Col>
-                                </Row>
-                                <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>* สูตร: (เงินเดือน ÷ 30 ÷ 8) × จำนวนชั่วโมง × ตัวคูณ</div>
-                            </div>
-
-                            <Row gutter={16}>
-                                <Col span={12}>
-                                    <Form.Item label="ค่าล่วงเวลา OT" name="overtime_pay">
-                                        <InputNumber
-                                            style={{ width: '100%' }} min={0} precision={2}
-                                            formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                                            addonAfter="บาท"
-                                        />
                                     </Form.Item>
                                 </Col>
-                                <Col span={12}>
-                                    <Form.Item label="โบนัส" name="bonus">
-                                        <InputNumber
-                                            style={{ width: '100%' }} min={0} precision={2}
-                                            formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                                            addonAfter="บาท"
-                                        />
-                                    </Form.Item>
-                                </Col>
-                            </Row>
-                            <Form.Item label="เบี้ยขยัน" name="diligence_allowance">
-                                <InputNumber
-                                    style={{ width: '100%' }} min={0} precision={2}
-                                    formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                                    addonAfter="บาท"
-                                />
-                            </Form.Item>
-
-                            <div style={{ color: '#ff4d4f', fontWeight: 600, margin: '16px 0 12px', borderBottom: '1px solid #ff4d4f22', paddingBottom: 6 }}>
-                                ➖ รายการหัก
-                            </div>
-                            <Row gutter={16}>
-                                <Col span={12}>
-                                    <Form.Item label="ค่าปรับสาย (บาท)" name="late_deduction">
-                                        <InputNumber
-                                            style={{ width: '100%' }} min={0} precision={2}
-                                            formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                                            addonAfter="บาท"
-                                        />
-                                    </Form.Item>
-                                </Col>
-                                <Col span={12}>
-                                    <Form.Item label="หักลาไม่รับเงิน" name="leave_deduction">
-                                        <InputNumber
-                                            style={{ width: '100%' }} min={0} precision={2}
-                                            formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                                            addonAfter="บาท"
-                                        />
-                                    </Form.Item>
+                                <Col span={9}>
+                                    <Button type="primary" ghost style={{ width: '100%', marginBottom: 24 }} onClick={() => {
+                                        const h = otHelperHours || 0;
+                                        const r = otHelperRate || 1.5;
+                                        const base = editingEmployee?.baseSalary || 0;
+                                        const pay = (base / 30 / 8) * h * r;
+                                        editForm.setFieldsValue({ overtime_pay: Number(pay.toFixed(2)) });
+                                    }}>คำนวณ OT</Button>
                                 </Col>
                             </Row>
                             <Row gutter={16}>
-                                <Col span={12}>
-                                    <Form.Item label="ภาษีเงินได้" name="tax_deduction">
-                                        <InputNumber
-                                            style={{ width: '100%' }} min={0} precision={2}
-                                            formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                                            addonAfter="บาท"
-                                        />
-                                    </Form.Item>
-                                </Col>
-                                <Col span={12}>
-                                    <Form.Item label="ประกันสังคม (SSO)" name="sso_deduction">
-                                        <InputNumber
-                                            style={{ width: '100%' }} min={0} precision={2}
-                                            formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                                            addonAfter="บาท"
-                                        />
-                                    </Form.Item>
-                                </Col>
+                                <Col span={12}><Form.Item label="OT" name="overtime_pay"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
+                                <Col span={12}><Form.Item label="โบนัส" name="bonus"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
                             </Row>
+                            <Form.Item label="เบี้ยขยัน" name="diligence_allowance"><InputNumber style={{ width: '100%' }} /></Form.Item>
 
-                            {/* Live net preview */}
-                            <Form.Item shouldUpdate style={{ marginTop: 8 }}>
-                                {() => {
-                                    const vals = editForm.getFieldsValue();
-                                    const base = editingEmployee.baseSalary;
-                                    const net = base
-                                        + (vals.overtime_pay || 0)
-                                        + (vals.bonus || 0)
-                                        + (vals.diligence_allowance || 0)
-                                        - (vals.late_deduction || 0)
-                                        - (vals.leave_deduction || 0)
-                                        - (vals.tax_deduction || 0)
-                                        - (vals.sso_deduction || 0);
-                                    return (
-                                        <div style={{ background: '#f0f5ff', padding: 16, borderRadius: 8, textAlign: 'center' }}>
-                                            <div style={{ color: '#888', fontSize: 12 }}>ยอดสุทธิ์ใหม่ (preview)</div>
-                                            <div style={{ fontSize: 28, fontWeight: 700, color: '#1890ff' }}>
-                                                {formatCurrency(net)}
-                                            </div>
-                                        </div>
-                                    );
-                                }}
-                            </Form.Item>
+                            <div style={{ color: '#ff4d4f', fontWeight: 600, margin: '16px 0 12px' }}>➖ รายการหัก</div>
+                            <Row gutter={16}>
+                                <Col span={12}><Form.Item label="ค่าปรับสาย" name="late_deduction"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
+                                <Col span={12}><Form.Item label="ลาไม่รับเงิน" name="leave_deduction"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}><Form.Item label="ภาษี" name="tax_deduction"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
+                                <Col span={12}><Form.Item label="SSO" name="sso_deduction"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
+                            </Row>
                         </Form>
                     </>
                 )}
