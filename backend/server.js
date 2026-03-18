@@ -1592,16 +1592,6 @@ async function runMigrations() {
             FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
             UNIQUE(employee_id, date)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-        `CREATE TABLE IF NOT EXISTS admins (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            username VARCHAR(50) UNIQUE NOT NULL,
-            password VARCHAR(255) NOT NULL,
-            role VARCHAR(20) DEFAULT 'admin',
-            name VARCHAR(100),
-            email VARCHAR(100),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-        `INSERT IGNORE INTO admins (username, password, name, role) VALUES ('admin', 'admin123', 'System Administrator', 'superadmin')`,
         `CREATE TABLE IF NOT EXISTS kpis (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
