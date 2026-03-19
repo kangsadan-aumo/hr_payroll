@@ -2113,12 +2113,18 @@ async function runMigrations() {
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS password VARCHAR(255) AFTER username`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'employee' AFTER password`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS must_change_password TINYINT(1) DEFAULT 0 AFTER role`,
-        `UPDATE employees SET username = employee_code, password = employee_code, must_change_password = 1 WHERE username IS NULL`,
+        `UPDATE employees SET username = employee_code, password = 'Example123', must_change_password = 1 WHERE username IS NULL OR password IS NULL`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_1_5_pay DECIMAL(10, 2) DEFAULT 0.00`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_2_pay DECIMAL(10, 2) DEFAULT 0.00`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_3_pay DECIMAL(10, 2) DEFAULT 0.00`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS trip_count INT DEFAULT 0`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS trip_allowance DECIMAL(10, 2) DEFAULT 0.00`,
+        `ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS days_per_year DECIMAL(5, 2) DEFAULT 0.00 AFTER is_unpaid`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS days_per_month INT DEFAULT 30`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS hours_per_day INT DEFAULT 8`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS sso_rate DECIMAL(5, 4) DEFAULT 0.05`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS sso_max_amount DECIMAL(10, 2) DEFAULT 750.00`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS default_password VARCHAR(255) DEFAULT 'Example123'`,
     ];
     for (const sql of migrations) {
         try {
