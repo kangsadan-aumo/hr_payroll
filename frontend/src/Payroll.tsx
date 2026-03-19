@@ -14,7 +14,7 @@ import dayjs from 'dayjs';
 import axios from 'axios';
 import { API_BASE } from './config';
 import * as XLSX from 'xlsx';
-import { toThaiDate, toThaiMonth } from './utils/thaiDate';
+import { toThaiMonth } from './utils/thaiDate';
 
 const { Title, Text } = Typography;
 const { Option } = Select;

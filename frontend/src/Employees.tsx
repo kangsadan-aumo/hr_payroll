@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Typography, Card, Table, Input, Button, Space, Tag, Avatar, Tooltip, Drawer,
     Form, Select, DatePicker, message, Popconfirm, Row, Col, Modal, Upload, Alert,
@@ -104,6 +104,8 @@ export const Employees: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [subsidiariesList, setSubsidiariesList] = useState<any[]>([]);
     const [form] = Form.useForm();
+    const [newDeptName, setNewDeptName] = useState('');
+    const inputRef = useRef<any>(null);
 
     // CSV import states
     const [importModalOpen, setImportModalOpen] = useState(false);
@@ -124,6 +126,26 @@ export const Employees: React.FC = () => {
     const [quotaEmployee, setQuotaEmployee] = useState<Employee | null>(null);
     const [leaveQuotas, setLeaveQuotas] = useState<any[]>([]);
     const [quotaForm] = Form.useForm();
+
+    const onNewDeptChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setNewDeptName(event.target.value);
+    };
+
+    const addDepartment = async (e: any) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!newDeptName.trim()) return;
+        try {
+            await axios.post(`${API}/departments`, { name: newDeptName });
+            message.success('เพิ่มแผนกใหม่สำเร็จ');
+            setNewDeptName('');
+            await fetchData();
+            setTimeout(() => {
+                inputRef.current?.focus();
+            }, 0);
+        } catch (error) {
+            message.error('ไม่สามารถเพิ่มแผนกได้');
+        }
+    };
 
     const fetchData = async () => {
         setLoading(true);
@@ -780,7 +802,29 @@ export const Employees: React.FC = () => {
                     <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="department_id" label="แผนก" rules={[{ required: true, message: 'กรุณาเลือกแผนก' }]}>
-                                <Select placeholder="เลือกแผนก">
+                                <Select 
+                                    placeholder="เลือกหรือพิมพ์เพิ่มแผนก"
+                                    showSearch
+                                    optionFilterProp="children"
+                                    dropdownRender={(menu) => (
+                                        <>
+                                            {menu}
+                                            <Divider style={{ margin: '8px 0' }} />
+                                            <Space style={{ padding: '0 8px 4px' }}>
+                                                <Input
+                                                    placeholder="ชื่อแผนกใหม่..."
+                                                    ref={inputRef}
+                                                    value={newDeptName}
+                                                    onChange={onNewDeptChange}
+                                                    onKeyDown={(e) => e.stopPropagation()}
+                                                />
+                                                <Button type="text" icon={<PlusOutlined />} onClick={addDepartment}>
+                                                    เพิ่ม
+                                                </Button>
+                                            </Space>
+                                        </>
+                                    )}
+                                >
                                     {departmentsList.map(d => <Option key={d.id} value={d.id}>{d.name}</Option>)}
                                 </Select>
                             </Form.Item>
