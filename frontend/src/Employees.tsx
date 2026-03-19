@@ -333,10 +333,10 @@ export const Employees: React.FC = () => {
 
 
     const filteredEmployees = employees.filter(emp =>
-        emp.name.toLowerCase().includes(searchText.toLowerCase()) ||
-        emp.id.includes(searchText) ||
-        (emp.employee_code && emp.employee_code.includes(searchText)) ||
-        emp.department.toLowerCase().includes(searchText.toLowerCase())
+        emp.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+        String(emp.id).includes(searchText) ||
+        (emp.employee_code && String(emp.employee_code).includes(searchText)) ||
+        emp.department?.toLowerCase().includes(searchText.toLowerCase())
     );
 
     const departments = Array.from(new Set(employees.map(e => e.department)));

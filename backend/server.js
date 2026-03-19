@@ -415,15 +415,22 @@ app.post('/api/employees', async (req, res) => {
             pvf_rate, pvf_employer_rate, reports_to
         } = req.body;
         
+        // Fetch default password from settings
+        const [[settings]] = await pool.query('SELECT default_password FROM system_settings LIMIT 1');
+        const defaultPassword = settings?.default_password || 'Example123';
+        const username = employee_code; // Default username to employee code
+
         const [result] = await pool.query(`
             INSERT INTO employees (
-                first_name, last_name, employee_code, department_id, company_id, position, 
+                first_name, last_name, employee_code, username, password, must_change_password, 
+                department_id, company_id, position, 
                 join_date, shift_id, base_salary, phone, email, status, id_number,
                 spouse_allowance, children_count, parents_care_count, health_insurance, life_insurance,
                 pvf_rate, pvf_employer_rate, reports_to
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-            first_name, last_name, employee_code, department_id, company_id, position, 
+            first_name, last_name, employee_code, username, defaultPassword,
+            department_id, company_id, position, 
             join_date, shift_id, base_salary, phone, email, status || 'active', id_number,
             spouse_allowance || 0, children_count || 0, parents_care_count || 0, 
             health_insurance || 0, life_insurance || 0, pvf_rate || 0, pvf_employer_rate || 0, reports_to || null
@@ -931,20 +938,27 @@ app.delete('/api/leave-rules/:id', async (req, res) => {
 app.get('/api/leave-types', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM leave_types ORDER BY id ASC');
-        res.json(rows.map(r => ({ id: r.id.toString(), leaveName: r.name, isDeductSalary: r.is_unpaid })));
+        res.json(rows.map(r => ({ 
+            id: r.id.toString(), 
+            leaveName: r.name, 
+            isDeductSalary: r.is_unpaid,
+            daysPerYear: r.days_per_year 
+        })));
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/leave-types', async (req, res) => {
     try {
-        const [result] = await pool.query('INSERT INTO leave_types (name, is_unpaid) VALUES (?, ?)', [req.body.leaveName, req.body.isDeductSalary]);
+        const [result] = await pool.query('INSERT INTO leave_types (name, is_unpaid, days_per_year) VALUES (?, ?, ?)', 
+            [req.body.leaveName, req.body.isDeductSalary, req.body.daysPerYear || 0]);
         res.status(201).json({ id: result.insertId.toString() });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.put('/api/leave-types/:id', async (req, res) => {
     try {
-        await pool.query('UPDATE leave_types SET name=?, is_unpaid=? WHERE id=?', [req.body.leaveName, req.body.isDeductSalary, req.params.id]);
+        await pool.query('UPDATE leave_types SET name=?, is_unpaid=?, days_per_year=? WHERE id=?', 
+            [req.body.leaveName, req.body.isDeductSalary, req.body.daysPerYear, req.params.id]);
         res.json({ message: 'Updated' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -1016,7 +1030,8 @@ app.put('/api/settings', async (req, res) => {
         const { 
             company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave,
             late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, 
-            diligence_allowance, days_per_month, hours_per_day, sso_rate, sso_max_amount
+            diligence_allowance, days_per_month, hours_per_day, sso_rate, sso_max_amount,
+            default_password
         } = req.body;
         await pool.query(`
             UPDATE system_settings SET 
@@ -1031,12 +1046,14 @@ app.put('/api/settings', async (req, res) => {
                 hours_per_day=COALESCE(?, hours_per_day),
                 sso_rate=COALESCE(?, sso_rate),
                 sso_max_amount=COALESCE(?, sso_max_amount),
+                default_password=COALESCE(?, default_password),
                 updated_at=CURRENT_TIMESTAMP
             WHERE id = 1
         `, [
             company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave,
             late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, 
-            diligence_allowance, days_per_month, hours_per_day, sso_rate, sso_max_amount
+            diligence_allowance, days_per_month, hours_per_day, sso_rate, sso_max_amount,
+            default_password
         ]);
         res.json({ message: 'Settings updated' });
     } catch (error) { res.status(500).json({ error: error.message }); }

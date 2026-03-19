@@ -70,7 +70,8 @@ export const Settings: React.FC = () => {
                 daysPerMonth: s.days_per_month,
                 hoursPerDay: s.hours_per_day,
                 ssoRate: s.sso_rate * 100, // แสดงเป็นเปอร์เซ็นต์
-                ssoMaxAmount: s.sso_max_amount
+                ssoMaxAmount: s.sso_max_amount,
+                default_password: s.default_password
             });
 
             // Set Others
@@ -108,7 +109,8 @@ export const Settings: React.FC = () => {
                 days_per_month: values.daysPerMonth,
                 hours_per_day: values.hoursPerDay,
                 sso_rate: values.ssoRate / 100, // แปลงกลับเป็นทศนิยม
-                sso_max_amount: values.ssoMaxAmount
+                sso_max_amount: values.ssoMaxAmount,
+                default_password: values.default_password
             };
             await axios.put(`${API_BASE}/settings`, payload);
             await fetchAllData(); // Re-fetch to confirm
@@ -235,7 +237,8 @@ export const Settings: React.FC = () => {
     const handleSaveLeaveType = async (values: any) => {
         const payload = {
             leaveName: values.leaveName,
-            isDeductSalary: values.isDeductSalary
+            isDeductSalary: values.isDeductSalary,
+            daysPerYear: values.daysPerYear
         };
 
         try {
@@ -336,6 +339,7 @@ export const Settings: React.FC = () => {
 
     const leaveTypeColumns = [
         { title: 'ประเภทการลา', dataIndex: 'leaveName', key: 'leaveName' },
+        { title: 'จำนวนวันที่ลาได้ (วัน/ปี)', dataIndex: 'daysPerYear', key: 'daysPerYear', render: (val: number) => val > 0 ? `${val} วัน` : 'ไม่ระบุ' },
         { title: 'หักเงินเดือนหรือไม่', dataIndex: 'isDeductSalary', key: 'isDeductSalary', render: (val: boolean) => val ? <Tag color="error">หักเงิน (Unpaid)</Tag> : <Tag color="success">ไม่หักเงิน (Paid)</Tag> },
         {
             title: 'จัดการ', key: 'action', align: 'center' as const, render: (_: any, record: any) => (
@@ -344,7 +348,8 @@ export const Settings: React.FC = () => {
                         setEditingLeaveTypeId(record.id);
                         leaveTypeForm.setFieldsValue({
                             leaveName: record.leaveName,
-                            isDeductSalary: record.isDeductSalary
+                            isDeductSalary: record.isDeductSalary,
+                            daysPerYear: record.daysPerYear
                         });
                         setIsLeaveTypeModalOpen(true);
                     }} />
@@ -458,6 +463,11 @@ export const Settings: React.FC = () => {
                                                 <Select.Option value={30}>สิ้นเดือน (30/31)</Select.Option>
                                                 <Select.Option value={15}>วันที่ 15</Select.Option>
                                             </Select>
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                        <Form.Item name="default_password" label="รหัสผ่านเริ่มต้นสำหรับพนักงานใหม่" tooltip="พนักงานใหม่ที่เพิ่มเข้าระบบจะใช้รหัสผ่านนี้ในการ Login ครั้งแรก">
+                                            <Input.Password placeholder="ระบุรหัสผ่านเริ่มต้น" />
                                         </Form.Item>
                                     </Col>
                                 </Row>
@@ -609,8 +619,11 @@ export const Settings: React.FC = () => {
 
             {/* Leave Type Modal */}
             <Modal title={editingLeaveTypeId ? "แก้ไขประเภทการลา" : "เพิ่มประเภทการลา"} open={isLeaveTypeModalOpen} onOk={() => leaveTypeForm.submit()} onCancel={() => setIsLeaveTypeModalOpen(false)}>
-                <Form form={leaveTypeForm} layout="vertical" onFinish={handleSaveLeaveType} initialValues={{ isDeductSalary: false }}>
+                <Form form={leaveTypeForm} layout="vertical" onFinish={handleSaveLeaveType} initialValues={{ isDeductSalary: false, daysPerYear: 0 }}>
                     <Form.Item name="leaveName" label="ชื่อประเภทการลา" rules={[{ required: true }]}><Input /></Form.Item>
+                    <Form.Item name="daysPerYear" label="จำนวนวันที่ลาได้ต่อปี" rules={[{ required: true }]}>
+                        <InputNumber min={0} style={{ width: '100%' }} />
+                    </Form.Item>
                     <Form.Item name="isDeductSalary" valuePropName="checked" label="ตั้งค่าการหักเงิน">
                         <Switch checkedChildren="หักเงิน" unCheckedChildren="ไม่หักเงิน" />
                     </Form.Item>
