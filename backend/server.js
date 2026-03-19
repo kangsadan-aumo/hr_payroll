@@ -51,22 +51,26 @@ const pool = mysql.createPool({
 // ─────────────────────────────────────────────
 // 💡 HELPER: คำนวณประกันสังคม
 // ─────────────────────────────────────────────
-function calculateSSO(baseSalary) {
-    // ประกันสังคม 5% ของเงินเดือน แต่ไม่เกิน 750 บาท/เดือน
-    return Math.min(Math.floor(baseSalary * 0.05), 750);
+function calculateSSO(baseSalary, settings = {}) {
+    const rate = parseFloat(settings.sso_rate || 0.05);
+    const max = parseFloat(settings.sso_max_amount || 750);
+    // ประกันสังคม % ของเงินเดือน แต่ไม่เกินยอดสูงสุด
+    return Math.min(Math.floor(baseSalary * rate), max);
 }
 
 // ─────────────────────────────────────────────
 // 💡 HELPER: คำนวณภาษีเงินได้บุคคลธรรมดา (PIT) - แบบขั้นบันได (รวมลดหย่อน)
 // ─────────────────────────────────────────────
-function calculateIncomeTax(baseSalary, allowances = {}) {
+function calculateIncomeTax(baseSalary, allowances = {}, settings = {}) {
     const annualIncome = baseSalary * 12;
     
-    // รายได้หลังหักค่าใช้จ่าย (หักได้ 50% แต่ไม่เกิน 100,000)
-    const expenses = Math.min(annualIncome * 0.5, 100000);
+    // รายได้หลังหักค่าใช้จ่าย (หักได้ 50% แต่ไม่เกิน 100,000 หรือตามที่ตั้งค่า)
+    const expenseRate = parseFloat(settings.tax_expense_rate || 0.5);
+    const expenseMax = parseFloat(settings.tax_expense_max || 100000);
+    const expenses = Math.min(annualIncome * expenseRate, expenseMax);
     
     // ลดหย่อนพื้นฐาน
-    let totalAllowances = 60000; // ส่วนตัว
+    let totalAllowances = parseFloat(settings.tax_allowance_personal || 60000); // ส่วนตัว
     
     // ลดหย่อนอื่นๆ
     if (allowances.spouse_allowance) totalAllowances += 60000;
@@ -79,7 +83,8 @@ function calculateIncomeTax(baseSalary, allowances = {}) {
     totalAllowances += Math.min(health + life, 100000);
     
     // ประกันสังคม (หักตามจริงรายปี - สมมติ 750 * 12 = 9,000)
-    totalAllowances += 9000; 
+    const annualSSO = (settings.sso_max_amount || 750) * 12;
+    totalAllowances += annualSSO; 
 
     const taxableIncome = Math.max(0, annualIncome - expenses - totalAllowances);
     
@@ -115,9 +120,11 @@ function calculateIncomeTax(baseSalary, allowances = {}) {
 // ─────────────────────────────────────────────
 // 💡 HELPER: คำนวณค่าล่วงเวลา (OT)
 // ─────────────────────────────────────────────
-function calculateOTPay(baseSalary, hours, multiplier) {
-    // ฐานคำนวณ: (เงินเดือน / 30 / 8) * ชั่วโมง * ตัวคูณ
-    const hourlyRate = (baseSalary / 30 / 8);
+function calculateOTPay(baseSalary, hours, multiplier, settings = {}) {
+    const daysPerMonth = parseFloat(settings.days_per_month || 30);
+    const hoursPerDay = parseFloat(settings.hours_per_day || 8);
+    // ฐานคำนวณ: (เงินเดือน / วันต่อเดือน / ชม.ต่อวัน) * ชั่วโมง * ตัวคูณ
+    const hourlyRate = (baseSalary / daysPerMonth / hoursPerDay);
     return Math.floor(hourlyRate * hours * multiplier);
 }
 
@@ -725,8 +732,11 @@ app.get('/api/settings', async (req, res) => {
 
 app.put('/api/settings', async (req, res) => {
     try {
-        const { company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave,
-            late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, diligence_allowance } = req.body;
+        const { 
+            company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave,
+            late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, 
+            diligence_allowance, days_per_month, hours_per_day, sso_rate, sso_max_amount
+        } = req.body;
         await pool.query(`
             UPDATE system_settings SET 
                 company_name=COALESCE(?, company_name), tax_id=COALESCE(?, tax_id), address=COALESCE(?, address),
@@ -736,10 +746,17 @@ app.put('/api/settings', async (req, res) => {
                 auto_deduct_tax=COALESCE(?, auto_deduct_tax), auto_deduct_sso=COALESCE(?, auto_deduct_sso),
                 payroll_cutoff_date=COALESCE(?, payroll_cutoff_date),
                 diligence_allowance=COALESCE(?, diligence_allowance),
+                days_per_month=COALESCE(?, days_per_month),
+                hours_per_day=COALESCE(?, hours_per_day),
+                sso_rate=COALESCE(?, sso_rate),
+                sso_max_amount=COALESCE(?, sso_max_amount),
                 updated_at=CURRENT_TIMESTAMP
             WHERE id = 1
-        `, [company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave,
-            late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, diligence_allowance]);
+        `, [
+            company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave,
+            late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, 
+            diligence_allowance, days_per_month, hours_per_day, sso_rate, sso_max_amount
+        ]);
         res.json({ message: 'Settings updated' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -850,9 +867,9 @@ app.get('/api/payroll', async (req, res) => {
             
             // OT
             const empOt = otMap[e.id] || {};
-            const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
-            const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
-            const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
+            const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5, settings);
+            const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0, settings);
+            const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0, settings);
             const totalOT = ot1_5_pay + ot2_pay + ot3_pay;
 
             // PVF
@@ -866,14 +883,15 @@ app.get('/api/payroll', async (req, res) => {
             // หักลา
             const lv = leaveMap[e.id];
             const unpaidDays = lv ? parseFloat(lv.unpaid_days || 0) : 0;
-            const unpaidLeaveDeduction = Math.floor((baseSalary / 30) * unpaidDays);
+            const daysPerMonth = parseFloat(settings.days_per_month || 30);
+            const unpaidLeaveDeduction = Math.floor((baseSalary / daysPerMonth) * unpaidDays);
 
             // เบี้ยขยัน (เงื่อนไขอัตโนมัติ: ไม่สาย และไม่มีลาไม่รับเงิน)
             const earnedDiligence = (totalLateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0;
 
             // ภาษี (PIT) - ส่ง allowances ไปคำนวณ
-            const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e) : 0;
-            const ssoDeduction = autoDeductSSO ? calculateSSO(baseSalary) : 0;
+            const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e, settings) : 0;
+            const ssoDeduction = autoDeductSSO ? calculateSSO(baseSalary, settings) : 0;
 
             return {
                 employeeId: e.employee_code,
@@ -973,9 +991,9 @@ app.post('/api/payroll/calculate', async (req, res) => {
             
             // OT Calculation
             const empOt = otMap[e.id] || {};
-            const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
-            const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
-            const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
+            const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5, settings);
+            const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0, settings);
+            const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0, settings);
             const totalOT = ot1_5_pay + ot2_pay + ot3_pay;
 
             // Health/Deductions
@@ -984,7 +1002,8 @@ app.post('/api/payroll/calculate', async (req, res) => {
             const latePenalty = Math.floor(lateMinutes * latePenaltyPerMin);
             const lv = leaveMap[e.id];
             const unpaidDays = lv ? parseFloat(lv.unpaid_days || 0) : 0;
-            const unpaidLeaveDeduction = Math.floor((baseSalary / 30) * unpaidDays);
+            const daysPerMonth = parseFloat(settings.days_per_month || 30);
+            const unpaidLeaveDeduction = Math.floor((baseSalary / daysPerMonth) * unpaidDays);
 
             const cl = claimsMap[e.id];
             const totalClaims = cl ? parseFloat(cl.total_claims || 0) : 0;
@@ -995,8 +1014,8 @@ app.post('/api/payroll/calculate', async (req, res) => {
             const pvfEmployer = Math.floor(baseSalary * (parseFloat(e.pvf_employer_rate || 0) / 100));
             
             // Tax & SSO
-            const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e) : 0;
-            const ssoDeduction = autoDeductSSO ? calculateSSO(baseSalary) : 0;
+            const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e, settings) : 0;
+            const ssoDeduction = autoDeductSSO ? calculateSSO(baseSalary, settings) : 0;
 
             const netSalary = baseSalary + totalOT + earnedDiligence + totalClaims - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee;
 
@@ -1510,6 +1529,13 @@ async function runMigrations() {
         // 3. Incremental Migrations
         `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS diligence_allowance DECIMAL(10,2) DEFAULT 0.00`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS diligence_allowance DECIMAL(10,2) DEFAULT 0.00`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS days_per_month INT DEFAULT 30`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS hours_per_day INT DEFAULT 8`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS sso_rate DECIMAL(5,4) DEFAULT 0.05`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS sso_max_amount DECIMAL(10,2) DEFAULT 750.00`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS tax_expense_rate DECIMAL(5,4) DEFAULT 0.5`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS tax_expense_max DECIMAL(10,2) DEFAULT 100000.00`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS tax_allowance_personal DECIMAL(10,2) DEFAULT 60000.00`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(20) DEFAULT NULL`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS email VARCHAR(150) DEFAULT NULL`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS claims_total DECIMAL(10,2) DEFAULT 0.00`,

@@ -97,6 +97,10 @@ CREATE TABLE IF NOT EXISTS system_settings (
     auto_deduct_sso TINYINT(1) DEFAULT 1,
     payroll_cutoff_date INT DEFAULT 25,
     diligence_allowance DECIMAL(10, 2) DEFAULT 0.00,
+    days_per_month INT DEFAULT 30,
+    hours_per_day INT DEFAULT 8,
+    sso_rate DECIMAL(5, 4) DEFAULT 0.05,
+    sso_max_amount DECIMAL(10, 2) DEFAULT 750.00,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

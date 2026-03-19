@@ -61,7 +61,11 @@ export const Settings: React.FC = () => {
                 deductExcessSickLeave: s.deduct_excess_sick_leave === 1,
                 deductExcessPersonalLeave: s.deduct_excess_personal_leave === 1,
                 payrollCutoffDate: s.payroll_cutoff_date,
-                diligenceAllowance: s.diligence_allowance
+                diligenceAllowance: s.diligence_allowance,
+                daysPerMonth: s.days_per_month,
+                hoursPerDay: s.hours_per_day,
+                ssoRate: s.sso_rate * 100, // แสดงเป็นเปอร์เซ็นต์
+                ssoMaxAmount: s.sso_max_amount
             });
 
             // Set Others
@@ -94,7 +98,11 @@ export const Settings: React.FC = () => {
                 auto_deduct_tax: values.autoDeductTax ? 1 : 0,
                 auto_deduct_sso: values.autoDeductSso ? 1 : 0,
                 payroll_cutoff_date: values.payrollCutoffDate,
-                diligence_allowance: values.diligenceAllowance
+                diligence_allowance: values.diligenceAllowance,
+                days_per_month: values.daysPerMonth,
+                hours_per_day: values.hoursPerDay,
+                sso_rate: values.ssoRate / 100, // แปลงกลับเป็นทศนิยม
+                sso_max_amount: values.ssoMaxAmount
             };
             await axios.put(`${API_BASE}/settings`, payload);
             await fetchAllData(); // Re-fetch to confirm
@@ -396,6 +404,35 @@ export const Settings: React.FC = () => {
                                                 <Select.Option value={30}>สิ้นเดือน (30/31)</Select.Option>
                                                 <Select.Option value={15}>วันที่ 15</Select.Option>
                                             </Select>
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+
+                                <Title level={4} style={{ marginTop: 32 }}>การตั้งค่าการคำนวณ (Calculation Constants)</Title>
+                                <Divider style={{ margin: '12px 0 24px 0' }} />
+
+                                <Row gutter={16}>
+                                    <Col span={12}>
+                                        <Form.Item name="daysPerMonth" label="จำนวนวันทำงานเฉลี่ยต่อเดือน" tooltip="ใช้สำหรับหารเงินเดือนเพื่อหาค่าจ้างรายวัน (เช่น 30 หรือ 26)">
+                                            <InputNumber min={1} style={{ width: '100%' }} />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                        <Form.Item name="hoursPerDay" label="ชั่วโมงทำงานปกติ ต่อวัน" tooltip="ปกติคือ 8 ชม.">
+                                            <InputNumber min={1} style={{ width: '100%' }} />
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+
+                                <Row gutter={16}>
+                                    <Col span={12}>
+                                        <Form.Item name="ssoRate" label="อัตราประกันสังคม (%)" tooltip="ปกติคือ 5%">
+                                            <InputNumber min={0} max={100} style={{ width: '100%' }} suffix="%" />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                        <Form.Item name="ssoMaxAmount" label="เพดานประกันสังคมสูงสุด (บาท)" tooltip="ปกติคือ 750 บาท">
+                                            <InputNumber min={0} style={{ width: '100%' }} />
                                         </Form.Item>
                                     </Col>
                                 </Row>
