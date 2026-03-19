@@ -1530,9 +1530,48 @@ app.get('/api/attendance', async (req, res) => {
             ${whereClause}
             ORDER BY al.check_in_time DESC
         `, params);
+
+        // คำนวณ Summary สำหรับหน้า Admin (DataImport.tsx)
+        const summaryMap = new Map();
         
-        res.json({ logs: rows });
+        rows.forEach(log => {
+            const key = log.employee_code;
+            if (!summaryMap.has(key)) {
+                summaryMap.set(key, {
+                    employeeId: log.employee_code,
+                    name: log.emp_name,
+                    department: log.department || 'ไม่ระบุ',
+                    workDays: 0,
+                    weekdays: 0,
+                    weekends: 0,
+                    onTimeDays: 0,
+                    lateCount: 0,
+                    totalLateMinutes: 0
+                });
+            }
+            
+            const s = summaryMap.get(key);
+            s.workDays++;
+            
+            // แยกวันธรรมดา/เสาร์-อาทิตย์
+            const day = dayjs(log.check_in_time).day();
+            if (day === 0 || day === 6) s.weekends++;
+            else s.weekdays++;
+            
+            if (log.status === 'late') {
+                s.lateCount++;
+                s.totalLateMinutes += (log.late_minutes || 0);
+            } else {
+                s.onTimeDays++;
+            }
+        });
+
+        res.json({ 
+            logs: rows,
+            summary: Array.from(summaryMap.values())
+        });
     } catch (error) {
+        console.error('Attendance error:', error);
         res.status(500).json({ error: error.message });
     }
 });

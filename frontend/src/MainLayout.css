@@ -12,3 +12,52 @@
 .trigger:hover {
     color: #1890ff;
 }
+
+/* Bottom Navigation for Mobile */
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 64px;
+    background: #fff;
+    border-top: 1px solid #f0f0f0;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 1000;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+.bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #8c8c8c;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.3s;
+    flex: 1;
+}
+
+.bottom-nav-item.active {
+    color: #1890ff;
+}
+
+.bottom-nav-item .anticon {
+    font-size: 22px;
+    margin-bottom: 4px;
+}
+
+@media (max-width: 768px) {
+    .ant-layout-sider {
+        display: none !important;
+    }
+    .main-content-layout {
+        margin-left: 0 !important;
+    }
+    .main-header {
+        padding: 0 16px !important;
+    }
+}

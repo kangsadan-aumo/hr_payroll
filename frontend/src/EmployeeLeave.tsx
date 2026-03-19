@@ -1,23 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { 
-    Card, Table, Button, Modal, Form, Select, DatePicker, 
-    Input, Space, Tag, Typography, message, 
-    Row, Col, Statistic, Progress 
+    Card, Button, Modal, Form, Select, DatePicker, 
+    Input, Space, Tag, Typography, message
 } from 'antd';
 import { 
     CalendarOutlined, 
     PlusOutlined, 
-    HistoryOutlined, 
-    ClockCircleOutlined,
+    SyncOutlined,
     CheckCircleFilled,
     CloseCircleFilled,
-    SyncOutlined
+    ClockCircleOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import { API_BASE } from './config';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { TextArea } = Input;
 
@@ -144,39 +142,66 @@ export const EmployeeLeave: React.FC<{ user: any }> = ({ user }) => {
         }
     ];
 
+    const isMobile = window.innerWidth < 768;
+
     return (
-        <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: 1000, margin: '0 auto', background: '#f8f9fa', minHeight: 'calc(100vh - 128px)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                <Title level={2}>ระบบทำเรื่องลา</Title>
-                <Button type="primary" size="large" icon={<PlusOutlined />} style={{ borderRadius: 8 }} onClick={() => setIsModalOpen(true)}>
-                    ยื่นคำขอการลา
-                </Button>
+                <Title level={3} style={{ margin: 0 }}>วันลาคงเหลือ</Title>
+                <Button type="primary" shape="circle" icon={<PlusOutlined />} size="large" onClick={() => setIsModalOpen(true)} />
             </div>
 
-            {/* 1. Leave Quota Dashboard */}
-            <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
+            {/* 1. Leave Quota - Card Layout */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 32 }}>
                 {quotas.map(q => (
-                    <Col xs={12} sm={8} md={6} key={q.leave_type_id}>
-                        <Card hoverable style={{ borderRadius: 16, textAlign: 'center' }}>
-                            <Statistic title={q.leave_name} value={q.quota_days} suffix="วัน" />
-                            <Progress percent={100} showInfo={false} strokeColor="#1890ff" size="small" />
-                        </Card>
-                    </Col>
+                    <Card key={q.leave_type_id} bodyStyle={{ padding: 16 }} bordered={false} style={{ borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                            <div style={{ 
+                                width: 48, height: 48, borderRadius: 12, 
+                                background: q.leave_name.includes('กิจ') ? '#e6f7ff' : '#fff1f0',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24
+                            }}>
+                                {q.leave_name.includes('กิจ') ? '💼' : '🏥'}
+                            </div>
+                            <div>
+                                <div style={{ fontSize: 16, fontWeight: 'bold' }}>{q.leave_name}</div>
+                                <div style={{ color: '#8c8c8c' }}>
+                                    เหลือ <span style={{ color: '#ff7a45', fontWeight: 'bold' }}>{q.quota_days}</span> จาก {q.total_days || q.quota_days} วัน
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
                 ))}
-            </Row>
+            </div>
 
-            {/* 2. Leave History Table */}
-            <Card bordered={false} style={{ borderRadius: 16, boxShadow: '0 8px 24px rgba(0,0,0,0.05)' }} title={
-                <Space><HistoryOutlined /><span>ประวัติการลา</span></Space>
-            }>
-                <Table 
-                    dataSource={requests} 
-                    columns={columns} 
-                    rowKey="id" 
-                    pagination={{ pageSize: 5 }} 
-                    style={{ borderRadius: 16 }}
-                />
-            </Card>
+            <Title level={3} style={{ marginBottom: 16 }}>คำขอลาล่าสุด</Title>
+
+            {/* 2. Leave History - Card Layout instead of Table */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {requests.map(req => (
+                    <Card key={req.id} bodyStyle={{ padding: 16 }} bordered={false} style={{ borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                            <Text strong style={{ fontSize: 16 }}>{req.leave_type_name}</Text>
+                            {getStatusTag(req.status)}
+                        </div>
+                        <div style={{ fontSize: 14, color: '#595959', marginBottom: 4 }}>
+                            {dayjs(req.start_date).format('DD/MM/YYYY')} - {dayjs(req.end_date).format('DD/MM/YYYY')} ({req.total_days} วัน)
+                        </div>
+                        <div style={{ fontSize: 13, color: '#8c8c8c' }}>
+                            เหตุผล: {req.reason || '-'}
+                        </div>
+                        
+                        {(req.status === 'รอหัวหน้าอนุมัติ' || req.status === 'รอ hr อนุมัติ') && (
+                            <div style={{ textAlign: 'right', marginTop: 8 }}>
+                                <Button type="link" danger size="small" onClick={() => handleCancel(req.id)}>ยกเลิกโดยพนักงาน</Button>
+                            </div>
+                        )}
+                    </Card>
+                ))}
+                {requests.length === 0 && (
+                    <div style={{ textAlign: 'center', padding: 40, color: '#bfbfbf' }}>ยังไม่มีประวัติการลา</div>
+                )}
+            </div>
 
             {/* 3. Leave Submission Modal */}
             <Modal
@@ -184,11 +209,12 @@ export const EmployeeLeave: React.FC<{ user: any }> = ({ user }) => {
                 open={isModalOpen}
                 onCancel={() => setIsModalOpen(false)}
                 footer={null}
+                width={isMobile ? '95%' : 520}
                 style={{ borderRadius: 16 }}
             >
                 <Form layout="vertical" form={form} onFinish={handleSubmit}>
                     <Form.Item label="ประเภทการลา" name="leave_type_id" rules={[{ required: true, message: 'กรุณาเลือกประเภทการลา' }]}>
-                        <Select placeholder="เลือกหัวข้อการลา" style={{ borderRadius: 8 }}>
+                        <Select placeholder="เลือกหัวข้อการลา" style={{ borderRadius: 8 }} size="large">
                             {leaveTypes.map(lt => (
                                 <Select.Option key={lt.id} value={lt.id}>{lt.leaveName}</Select.Option>
                             ))}
@@ -196,7 +222,7 @@ export const EmployeeLeave: React.FC<{ user: any }> = ({ user }) => {
                     </Form.Item>
                     
                     <Form.Item label="ระยะเวลา" name="dates" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]}>
-                        <RangePicker style={{ width: '100%', borderRadius: 8 }} />
+                        <RangePicker style={{ width: '100%', borderRadius: 8 }} size="large" />
                     </Form.Item>
 
                     <Form.Item label="เหตุผล / หมายเหตุ" name="reason" rules={[{ required: true, message: 'กรุณากรอกเหตุผล' }]}>
@@ -205,8 +231,8 @@ export const EmployeeLeave: React.FC<{ user: any }> = ({ user }) => {
 
                     <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
                         <Space>
-                            <Button onClick={() => setIsModalOpen(false)} style={{ borderRadius: 8 }}>ยกเลิก</Button>
-                            <Button type="primary" htmlType="submit" loading={loading} style={{ borderRadius: 8 }}>ส่งคำขอ</Button>
+                            <Button onClick={() => setIsModalOpen(false)} size="large">ยกเลิก</Button>
+                            <Button type="primary" htmlType="submit" loading={loading} size="large">ส่งคำขอ</Button>
                         </Space>
                     </Form.Item>
                 </Form>

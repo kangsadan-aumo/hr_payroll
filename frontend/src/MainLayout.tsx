@@ -77,41 +77,53 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
         onClick: (e) => onMenuClick(e.key),
     };
 
+    const isMobile = window.innerWidth <= 768;
+    const isEmployee = role === 'employee';
+
     return (
         <Layout style={{ minHeight: '100vh' }}>
-            <Sider
-                trigger={null}
-                collapsible
-                collapsed={collapsed}
-                theme="dark"
-                width={250}
-                style={{
-                    overflow: 'auto',
-                    height: '100vh',
-                    position: 'fixed',
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                }}
-            >
-                <div className="sidebar-logo">
-                    {!collapsed ? (
-                        <Title level={4} style={{ color: 'white', margin: 0 }}>HR System</Title>
-                    ) : (
-                        <Title level={4} style={{ color: 'white', margin: 0, textAlign: 'center' }}>HR</Title>
-                    )}
-                </div>
-                <Menu
+            {/* Sider: Hide for employee on mobile */}
+            {(!isMobile || !isEmployee) && (
+                <Sider
+                    trigger={null}
+                    collapsible
+                    collapsed={collapsed}
                     theme="dark"
-                    mode="inline"
-                    selectedKeys={[activeMenu]}
-                    items={menuItems}
-                    onClick={(e) => onMenuClick(e.key)}
-                />
-            </Sider>
+                    width={250}
+                    style={{
+                        overflow: 'auto',
+                        height: '100vh',
+                        position: 'fixed',
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        display: isMobile && isEmployee ? 'none' : 'block'
+                    }}
+                >
+                    <div className="sidebar-logo">
+                        {!collapsed ? (
+                            <Title level={4} style={{ color: 'white', margin: 0 }}>HR System</Title>
+                        ) : (
+                            <Title level={4} style={{ color: 'white', margin: 0, textAlign: 'center' }}>HR</Title>
+                        )}
+                    </div>
+                    <Menu
+                        theme="dark"
+                        mode="inline"
+                        selectedKeys={[activeMenu]}
+                        items={menuItems}
+                        onClick={(e) => onMenuClick(e.key)}
+                    />
+                </Sider>
+            )}
 
-            <Layout style={{ marginLeft: collapsed ? 80 : 250, transition: 'all 0.2s' }}>
+            <Layout className="main-content-layout" style={{ 
+                marginLeft: (isMobile || isEmployee) ? 0 : (collapsed ? 80 : 250), 
+                transition: 'all 0.2s',
+                paddingBottom: isEmployee ? 64 : 0
+            }}>
                 <Header
+                    className="main-header"
                     style={{
                         padding: '0 24px',
                         background: '#fff',
@@ -126,12 +138,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
                     }}
                 >
                     <div style={{ display: 'flex', alignItems: 'center' }}>
-                        {React.createElement(collapsed ? MenuUnfoldOutlined : MenuFoldOutlined, {
+                        {(!isEmployee) && React.createElement(collapsed ? MenuUnfoldOutlined : MenuFoldOutlined, {
                             className: 'trigger',
                             onClick: () => setCollapsed(!collapsed),
                             style: { fontSize: '18px', cursor: 'pointer', marginRight: '16px' }
                         })}
-                        <Text strong style={{ fontSize: '16px' }}>HR Management System</Text>
+                        <Text strong style={{ fontSize: '16px' }}>
+                            {isEmployee ? 'HR Mobile' : 'HR Management System'}
+                        </Text>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -147,9 +161,44 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
                     </div>
                 </Header>
 
-                <Content style={{ margin: '24px 16px', overflow: 'initial' }}>
+                <Content style={{ margin: isMobile ? '12px 8px' : '24px 16px', overflow: 'initial' }}>
                     {children}
                 </Content>
+                
+                {/* Bottom Nav for Employee */}
+                {isEmployee && (
+                    <div className="bottom-nav">
+                        <div 
+                            className={`bottom-nav-item ${activeMenu === 'emp-attendance' ? 'active' : ''}`}
+                            onClick={() => onMenuClick('emp-attendance')}
+                        >
+                            <ClockCircleOutlined />
+                            <span>หน้าแรก</span>
+                        </div>
+                        <div 
+                            className={`bottom-nav-item ${activeMenu === 'emp-leave' ? 'active' : ''}`}
+                            onClick={() => onMenuClick('emp-leave')}
+                        >
+                            <CalendarOutlined />
+                            <span>การลา</span>
+                        </div>
+                        <div 
+                            className={`bottom-nav-item ${activeMenu === 'profile' ? 'active' : ''}`}
+                            onClick={() => onMenuClick('change-password')}
+                        >
+                            <LockOutlined />
+                            <span>รหัสผ่าน</span>
+                        </div>
+                        <div 
+                            className="bottom-nav-item"
+                            onClick={() => onMenuClick('logout')}
+                            style={{ color: '#ff4d4f' }}
+                        >
+                            <LogoutOutlined />
+                            <span>ออกจากระบบ</span>
+                        </div>
+                    </div>
+                )}
             </Layout>
         </Layout>
     );

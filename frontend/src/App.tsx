@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, message } from 'antd';
 import thTH from 'antd/es/locale/th_TH';
 import dayjs from 'dayjs';
 import 'dayjs/locale/th';
@@ -109,6 +109,29 @@ function App() {
     }
   };
 
+  if (user.must_change_password || passwordModalVisible) {
+    return (
+      <ConfigProvider locale={thTH}>
+        <div style={{ minHeight: '100vh', background: '#f0f2f5', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <ChangePasswordModal 
+            visible={true}
+            user={user}
+            onCancel={() => {
+               // ถ้าไม่ได้บังคับเปลี่ยน (เช่น กดจากเมนูเอง) ถึงจะให้ปิดได้
+               if (!user.must_change_password) setPasswordModalVisible(false);
+            }}
+            onSuccess={(updatedUser) => {
+              setUser(updatedUser);
+              localStorage.setItem('hr_user', JSON.stringify(updatedUser));
+              setPasswordModalVisible(false);
+              message.success('เปลี่ยนรหัสผ่านสำเร็จ เตรียมเข้าสู่ระบบ');
+            }}
+          />
+        </div>
+      </ConfigProvider>
+    );
+  }
+
   return (
     <ConfigProvider locale={thTH}>
       <MainLayout 
@@ -118,17 +141,6 @@ function App() {
       >
         {renderContent()}
       </MainLayout>
-
-      <ChangePasswordModal 
-        visible={passwordModalVisible || !!user?.must_change_password}
-        user={user}
-        onCancel={() => setPasswordModalVisible(false)}
-        onSuccess={(updatedUser) => {
-          setUser(updatedUser);
-          localStorage.setItem('hr_user', JSON.stringify(updatedUser));
-          setPasswordModalVisible(false);
-        }}
-      />
     </ConfigProvider>
   );
 }
