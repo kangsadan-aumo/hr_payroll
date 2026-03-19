@@ -8,13 +8,16 @@ import type { TableProps } from 'antd';
 import {
     DollarOutlined, SearchOutlined, PrinterOutlined, CheckCircleOutlined,
     FileExcelOutlined, WalletOutlined, BankOutlined, CalculatorOutlined,
-    SyncOutlined, InfoCircleOutlined, EditOutlined
+    SyncOutlined, InfoCircleOutlined, EditOutlined, CarOutlined,
+    HistoryOutlined, DeleteOutlined, PlusOutlined, DownloadOutlined,
+    FilterOutlined, RollbackOutlined, UploadOutlined
 } from '@ant-design/icons';
+import { Tabs } from 'antd';
 import dayjs from 'dayjs';
 import axios from 'axios';
 import { API_BASE } from './config';
 import * as XLSX from 'xlsx';
-import { toThaiMonth } from './utils/thaiDate';
+import { toThaiMonth, toThaiDate } from './utils/thaiDate';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -59,6 +62,13 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
     const [editSaving, setEditSaving] = useState(false);
     const [editForm] = Form.useForm();
     const [otHelperHours, setOtHelperHours] = useState<number | null>(0);
+
+    // Trip Log states
+    const [tripLogs, setTripLogs] = useState<any[]>([]);
+    const [tripLoading, setTripLoading] = useState(false);
+    const [isTripModalVisible, setIsTripModalVisible] = useState(false);
+    const [tripEmployees, setTripEmployees] = useState<any[]>([]);
+    const [tripForm] = Form.useForm();
     const [otHelperRate, setOtHelperRate] = useState<number>(1.5);
 
     const currentMonth = monthFilter?.month() ? monthFilter.month() + 1 : dayjs().month() + 1;
@@ -67,12 +77,16 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
     const fetchPayroll = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API}/payroll`, {
-                params: { month: currentMonth, year: currentYear }
-            });
+            const m = monthFilter?.month() ?? dayjs().month();
+            const y = monthFilter?.year() ?? dayjs().year();
+            const res = await axios.get(`${API}/payroll`, { params: { month: m + 1, year: y } });
             setPayrollData(res.data.map((r: any) => ({ ...r, status: r.status || 'draft' })));
 
-            // fetch settings for company name
+            fetchTrips();
+
+            const empRes = await axios.get(`${API}/employees`);
+            setTripEmployees(empRes.data.filter((e: any) => e.position?.includes('ขับรถ')));
+
             try {
                 const setRes = await axios.get(`${API}/settings`);
                 if (setRes.data && setRes.data.company_name) {
@@ -85,6 +99,49 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
         } finally {
             setLoading(false);
         }
+    };
+
+    const fetchTrips = async () => {
+        setTripLoading(true);
+        try {
+            const m = monthFilter?.month() ?? dayjs().month();
+            const y = monthFilter?.year() ?? dayjs().year();
+            const res = await axios.get(`${API}/trips`, { params: { month: String(m + 1).padStart(2, '0'), year: y } });
+            setTripLogs(res.data);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setTripLoading(false);
+        }
+    };
+
+    const handleSaveTrip = async (values: any) => {
+        try {
+            await axios.post(`${API}/trips`, {
+                ...values,
+                trip_date: values.trip_date.format('YYYY-MM-DD')
+            });
+            message.success('บันทึกค่าเที่ยวสำเร็จ');
+            setIsTripModalVisible(false);
+            tripForm.resetFields();
+            fetchTrips();
+            fetchPayroll(); // Refresh calculation
+        } catch (error) {
+            message.error('เกิดข้อผิดพลาด');
+        }
+    };
+
+    const handleDeleteTrip = async (id: number) => {
+        Modal.confirm({
+            title: 'ยืนยันการลบ',
+            content: 'คุณต้องการลบรายการค่าเที่ยวนี้ใช่หรือไม่?',
+            onOk: async () => {
+                await axios.delete(`${API}/trips/${id}`);
+                message.success('ลบสำเร็จ');
+                fetchTrips();
+                fetchPayroll();
+            }
+        });
     };
 
     const fetchSettings = async () => {
@@ -352,64 +409,136 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 </Space>
             </div>
 
-            {isPreview && (
-                <Alert
-                    message="โหมด Preview — เงินเดือนยังไม่ถูกบันทึก"
-                    description="กด 'คำนวณเงินเดือน' เพื่อคำนวณจากข้อมูลจริง และบันทึกลงฐานข้อมูล"
-                    type="warning" showIcon icon={<InfoCircleOutlined />}
-                    style={{ marginBottom: 16 }}
-                />
-            )}
+            <Tabs defaultActiveKey="1" items={[
+                {
+                    key: '1',
+                    label: <span><HistoryOutlined /> รายการเงินเดือน</span>,
+                    children: (
+                        <>
+                            {isPreview && (
+                                <Alert
+                                    message="โหมด Preview — เงินเดือนยังไม่ถูกบันทึก"
+                                    description="กด 'คำนวณเงินเดือน' เพื่อคำนวณจากข้อมูลจริง และบันทึกลงฐานข้อมูล"
+                                    type="warning" showIcon icon={<InfoCircleOutlined />}
+                                    style={{ marginBottom: 16 }}
+                                />
+                            )}
 
-            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                <Col xs={24} sm={8}>
-                    <Card bordered={false} style={{ borderRadius: 8, background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)' }}>
-                        <Statistic
-                            title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>ยอดรวมรายได้สุทธิ</span>}
-                            value={summary.total_net} precision={2}
-                            valueStyle={{ color: '#fff', fontWeight: 'bold' }} prefix={<DollarOutlined />}
-                        />
-                    </Card>
-                </Col>
-                <Col xs={24} sm={8}>
-                    <Card bordered={false} style={{ borderRadius: 8 }}>
-                        <Statistic
-                            title="ยอดรวมรายจ่ายบริษัท (Gross)" value={summary.total_earned} precision={2}
-                            valueStyle={{ color: '#52c41a', fontWeight: 'bold' }} prefix={<WalletOutlined />}
-                        />
-                    </Card>
-                </Col>
-                <Col xs={24} sm={8}>
-                    <Card bordered={false} style={{ borderRadius: 8 }}>
-                        <Statistic
-                            title="ยอดเงินรวม (สรรพากร/ประกันสังคม)" value={summary.totalTaxSocial} precision={2}
-                            valueStyle={{ color: '#faad14', fontWeight: 'bold' }} prefix={<BankOutlined />}
-                        />
-                    </Card>
-                </Col>
-            </Row>
+                            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                                <Col xs={24} sm={6}>
+                                    <Card bordered={false} style={{ borderRadius: 8, background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)' }}>
+                                        <Statistic
+                                            title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>รายได้สุทธิรวม</span>}
+                                            value={summary.total_net} precision={2}
+                                            valueStyle={{ color: '#fff', fontWeight: 'bold' }} prefix={<DollarOutlined />}
+                                        />
+                                    </Card>
+                                </Col>
+                                <Col xs={24} sm={6}>
+                                    <Card bordered={false} style={{ borderRadius: 8 }}>
+                                        <Statistic
+                                            title="Gross Payroll" value={summary.total_earned} precision={2}
+                                            valueStyle={{ color: '#52c41a', fontWeight: 'bold' }} prefix={<WalletOutlined />}
+                                        />
+                                    </Card>
+                                </Col>
+                                <Col xs={24} sm={6}>
+                                    <Card bordered={false} style={{ borderRadius: 8 }}>
+                                        <Statistic
+                                            title="ถอนรวม (ค่าเที่ยว)" value={summary.total_trip_amount} precision={2}
+                                            valueStyle={{ color: '#faad14', fontWeight: 'bold' }} prefix={<CarOutlined />}
+                                        />
+                                        <div style={{ fontSize: 12, color: '#888' }}>{summary.total_trips} รอบ</div>
+                                    </Card>
+                                </Col>
+                                <Col xs={24} sm={6}>
+                                    <Card bordered={false} style={{ borderRadius: 8 }}>
+                                        <Statistic
+                                            title="ภาษี + SSO" value={summary.totalTaxSocial} precision={2}
+                                            valueStyle={{ color: '#ff4d4f', fontWeight: 'bold' }} prefix={<BankOutlined />}
+                                        />
+                                    </Card>
+                                </Col>
+                            </Row>
 
-            <Card bordered={false} style={{ borderRadius: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-                    <Space>
-                        <Input
-                            placeholder="ค้นหาชื่อ หรือรหัสพนักงาน" prefix={<SearchOutlined />}
-                            style={{ width: 250 }} value={searchText}
-                            onChange={e => setSearchText(e.target.value)} allowClear
-                        />
-                        <Select value={departmentFilter} onChange={setDepartmentFilter} style={{ width: 160 }}>
-                            <Option value="all">ทุกแผนก</Option>
-                            {departments.map(d => <Option key={d} value={d}>{d}</Option>)}
+                            <Card bordered={false} style={{ borderRadius: 8 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+                                    <Space>
+                                        <Input
+                                            placeholder="ค้นหาชื่อ หรือรหัสพนักงาน" prefix={<SearchOutlined />}
+                                            style={{ width: 250 }} value={searchText}
+                                            onChange={e => setSearchText(e.target.value)} allowClear
+                                        />
+                                        <Select value={departmentFilter} onChange={setDepartmentFilter} style={{ width: 160 }}>
+                                            <Option value="all">ทุกแผนก</Option>
+                                            {departments.map(d => <Option key={d} value={d}>{d}</Option>)}
+                                        </Select>
+                                    </Space>
+                                    <Text type="secondary">เลือกแล้ว {selectedRowKeys.length} | ทั้งหมด {filteredData.length} คน</Text>
+                                </div>
+                                <Table
+                                    rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys, getCheckboxProps: r => ({ disabled: r.status === 'paid' }) }}
+                                    columns={columns} dataSource={filteredData} rowKey="employeeId"
+                                    loading={loading} pagination={{ pageSize: 15 }} scroll={{ x: 1000 }}
+                                />
+                            </Card>
+                        </>
+                    )
+                },
+                {
+                    key: '2',
+                    label: <span><CarOutlined /> บันทึกค่าเที่ยว</span>,
+                    children: (
+                        <Card bordered={false} style={{ borderRadius: 8 }}>
+                            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+                                <Title level={5}>รายการส่งของ/ค่าเที่ยวพนักงานขับรถ ({toThaiDate(monthFilter?.toISOString() || '')})</Title>
+                                <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsTripModalVisible(true)}>เพิ่มรายการค่าเที่ยว</Button>
+                            </div>
+                            <Table
+                                dataSource={tripLogs}
+                                loading={tripLoading}
+                                columns={[
+                                    { title: 'พนักงาน', dataIndex: 'employee_name', key: 'name', render: (t, r) => `${t} (${r.employee_code})` },
+                                    { title: 'วันที่', dataIndex: 'trip_date', key: 'date', render: (d) => toThaiDate(d) },
+                                    { title: 'จำนวนเงิน', dataIndex: 'amount', key: 'amount', render: (a) => formatCurrency(a) },
+                                    { title: 'หมายเหตุ', dataIndex: 'notes', key: 'notes' },
+                                    { title: 'สถานะ', dataIndex: 'status', key: 'status', render: (s) => s === 'paid' ? <Tag color="blue">จ่ายแล้ว</Tag> : <Tag color="orange">ค้างจ่าย</Tag> },
+                                    { title: 'จัดการ', key: 'action', render: (_, r) => <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handleDeleteTrip(r.id)} disabled={r.status === 'paid'}>ลบ</Button> }
+                                ]}
+                                rowKey="id"
+                                pagination={{ pageSize: 10 }}
+                            />
+                        </Card>
+                    )
+                }
+            ]} />
+
+            {/* TRIP LOG MODAL */}
+            <Modal
+                title="เพิ่มรายการค่าเที่ยวพนักงาน"
+                open={isTripModalVisible}
+                onCancel={() => setIsTripModalVisible(false)}
+                onOk={() => tripForm.submit()}
+                okText="บันทึก"
+                cancelText="ยกเลิก"
+            >
+                <Form form={tripForm} layout="vertical" onFinish={handleSaveTrip}>
+                    <Form.Item name="employee_id" label="เลือกคนขับรถ" rules={[{ required: true, message: 'กรุณาเลือกพนักงาน' }]}>
+                        <Select placeholder="เลือกคนขับรถ" showSearch optionFilterProp="children">
+                            {tripEmployees.map(e => <Option key={e.id} value={e.id}>{e.first_name} {e.last_name} ({e.employee_code})</Option>)}
                         </Select>
-                    </Space>
-                    <Text type="secondary">เลือกแล้ว {selectedRowKeys.length} | ทั้งหมด {filteredData.length} คน</Text>
-                </div>
-                <Table
-                    rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys, getCheckboxProps: r => ({ disabled: r.status === 'paid' }) }}
-                    columns={columns} dataSource={filteredData} rowKey="employeeId"
-                    loading={loading} pagination={{ pageSize: 15 }} scroll={{ x: 1000 }}
-                />
-            </Card>
+                    </Form.Item>
+                    <Form.Item name="trip_date" label="วันที่วิ่งรถ" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]} initialValue={dayjs()}>
+                        <DatePicker style={{ width: '100%' }} />
+                    </Form.Item>
+                    <Form.Item name="amount" label="จำนวนเงินรายเที่ยว (บาท)" rules={[{ required: true, message: 'กรุณากรอกจำนวนเงิน' }]}>
+                        <InputNumber style={{ width: '100%' }} prefix="฿" precision={2} />
+                    </Form.Item>
+                    <Form.Item name="notes" label="หมายเหตุ / เลขที่ใบส่งของ">
+                        <Input.TextArea rows={2} placeholder="เช่น วิ่งไปสระบุรี, บิลเลขที่ 12345" />
+                    </Form.Item>
+                </Form>
+            </Modal>
 
             {/* PAYSLIP MODAL */}
             <Modal
