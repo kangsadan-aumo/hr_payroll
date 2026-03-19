@@ -40,9 +40,10 @@ interface Employee {
     reports_to?: number;
     manager_name?: string;
     company_id?: number;
-    company_name?: string;
+    company_name: string;
     first_name: string;
     last_name: string;
+    trip_allowance?: number;
 }
 
 interface CsvRow {
@@ -170,6 +171,8 @@ export const Employees: React.FC = () => {
                 ...e,
                 name: `${e.first_name} ${e.last_name}`,
                 joinDate: e.join_date,
+                department: e.department_name || '-',
+                company_name: e.company_name || 'ไม่ระบุ',
                 baseSalary: e.base_salary
             })));
             setDepartmentsList(depRes.data);
@@ -374,6 +377,7 @@ export const Employees: React.FC = () => {
             id_number: values.id_number || null,
             reports_to: values.reports_to || null,
             company_id: values.company_id || null,
+            trip_allowance: values.trip_allowance || 0,
         };
         try {
             if (editingEmployee) {

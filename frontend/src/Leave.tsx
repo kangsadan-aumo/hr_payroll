@@ -3,15 +3,9 @@ import { Row, Col, Card, Statistic, Typography, Table, Tag, Button, Space, Input
 import type { TableProps, MenuProps } from 'antd';
 import {
     CalendarOutlined,
-    CheckCircleOutlined,
-    ClockCircleOutlined,
-    CloseCircleOutlined,
-    SearchOutlined,
-    FilterOutlined,
-    PlusOutlined,
-    UploadOutlined,
-    DownloadOutlined,
-    MoreOutlined
+    CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, MoreOutlined,
+    UploadOutlined, SearchOutlined, FilterOutlined,
+    RollbackOutlined, PlusOutlined, DownloadOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import isBetween from 'dayjs/plugin/isBetween';
@@ -35,7 +29,7 @@ interface LeaveRequest {
     end_date: string;
     total_days: number;
     reason: string;
-    status: 'pending' | 'approved' | 'rejected';
+    status: 'pending' | 'approved' | 'rejected' | 'cancelled';
 }
 
 export const Leave: React.FC = () => {
@@ -120,10 +114,14 @@ export const Leave: React.FC = () => {
     };
 
     // Handle Status change (Approve / Reject)
-    const handleStatusUpdate = async (id: string, newStatus: 'approved' | 'rejected') => {
+    const handleStatusUpdate = async (id: string, newStatus: 'approved' | 'rejected' | 'cancelled') => {
         try {
             await axios.put(`${API_BASE}/leaves/requests/${id}/status`, { status: newStatus });
-            message.success(`อัปเดตสถานะเป็น ${newStatus === 'approved' ? 'อนุมัติ' : 'ไม่อนุมัติ'} เรียบร้อย`);
+            let statusText = '';
+            if (newStatus === 'approved') statusText = 'อนุมัติ';
+            else if (newStatus === 'rejected') statusText = 'ไม่อนุมัติ';
+            else statusText = 'ยกเลิก';
+            message.success(`อัปเดตสถานะเป็น ${statusText} เรียบร้อย`);
             setLeaveRequests(prev => prev.map(req => req.id === id ? { ...req, status: newStatus } : req));
         } catch (error) {
             message.error('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
@@ -145,8 +143,27 @@ export const Leave: React.FC = () => {
                     key: 'reject',
                     label: 'ไม่อนุมัติ',
                     icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
-                    disabled: record.status === 'rejected',
+                    disabled: record.status === 'rejected' || record.status === 'cancelled',
                     onClick: () => handleStatusUpdate(record.id, 'rejected')
+                },
+                {
+                    type: 'divider'
+                },
+                {
+                    key: 'cancel',
+                    label: 'ยกเลิกการลา (คืนวันลา)',
+                    icon: <RollbackOutlined style={{ color: '#faad14' }} />,
+                    disabled: record.status === 'cancelled',
+                    danger: true,
+                    onClick: () => {
+                        Modal.confirm({
+                            title: 'ยืนยันการยกเลิกการลา',
+                            content: 'ระบบจะเปลี่ยนสถานะเป็นยกเลิก และคืนจำนวนวันลาที่อนุมัติไปแล้วกลับเข้าโควตา (ถ้ามี)',
+                            onOk: () => handleStatusUpdate(record.id, 'cancelled'),
+                            okText: 'ยืนยันยกเลิก',
+                            cancelText: 'ปิด'
+                        });
+                    }
                 }
             ]
         };
@@ -202,7 +219,8 @@ export const Leave: React.FC = () => {
 
                 if (status === 'approved') { color = 'success'; text = 'อนุมัติแล้ว'; icon = <CheckCircleOutlined />; }
                 else if (status === 'rejected') { color = 'error'; text = 'ไม่อนุมัติ'; icon = <CloseCircleOutlined />; }
-                else if (status === 'pending') { color = 'warning'; text = 'รอพิจารณา'; icon = <ClockCircleOutlined />; }
+                else if (status === 'pending') { color = 'warning'; text = 'รอพิกิจารณา'; icon = <ClockCircleOutlined />; }
+                else if (status === 'cancelled') { color = 'default'; text = 'ยกเลิกแล้ว'; icon = <RollbackOutlined />; }
 
                 return <Tag color={color} icon={icon}>{text}</Tag>;
             }

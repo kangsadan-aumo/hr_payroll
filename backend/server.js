@@ -1044,6 +1044,16 @@ app.post('/api/payroll/calculate', async (req, res) => {
         const leaveMap = {};
         unpaidLeaves.forEach(l => { leaveMap[l.employee_id] = l; });
 
+        const [trips] = await pool.query(`
+            SELECT employee_id, COUNT(*) as trip_count, SUM(amount) as trip_total
+            FROM trip_logs
+            WHERE (status = 'unpaid' OR payroll_id IS NULL)
+              AND DATE_FORMAT(trip_date, '%m') = ? AND DATE_FORMAT(trip_date, '%Y') = ?
+            GROUP BY employee_id
+        `, [monthStr, yearStr]);
+        const tripMap = {};
+        trips.forEach(t => { tripMap[t.employee_id] = t; });
+
         let savedCount = 0;
         for (const e of employees) {
             const baseSalary = parseFloat(e.base_salary || 0);
@@ -1076,7 +1086,11 @@ app.post('/api/payroll/calculate', async (req, res) => {
             const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e, settings) : 0;
             const ssoDeduction = autoDeductSSO ? calculateSSO(baseSalary, settings) : 0;
 
-            const netSalary = baseSalary + totalOT + earnedDiligence + totalClaims - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee;
+            const tr = tripMap[e.id];
+            const tripCount = tr ? parseInt(tr.trip_count || 0) : 0;
+            const tripAllowanceTotal = tr ? parseFloat(tr.trip_total || 0) : 0;
+
+            const netSalary = baseSalary + totalOT + earnedDiligence + totalClaims + tripAllowanceTotal - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee;
 
             // Upsert
             await pool.query(
@@ -1086,13 +1100,19 @@ app.post('/api/payroll/calculate', async (req, res) => {
             const [payrollRes] = await pool.query(`
                 INSERT INTO payroll_records 
                     (employee_id, period_month, period_year, base_salary, overtime_pay, bonus,
-                     late_deduction, leave_deduction, tax_deduction, sso_deduction, diligence_allowance, claims_total, net_salary, 
+                     late_deduction, leave_deduction, tax_deduction, sso_deduction, diligence_allowance, claims_total, trip_count, trip_allowance, net_salary, 
                      pvf_employee_amount, pvf_employer_amount, ot_1_5_pay, ot_2_pay, ot_3_pay, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
-            `, [e.id, month, year, baseSalary, totalOT, 0, latePenalty, unpaidLeaveDeduction, taxDeduction, ssoDeduction, earnedDiligence, totalClaims, netSalary,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+            `, [e.id, month, year, baseSalary, totalOT, 0, latePenalty, unpaidLeaveDeduction, taxDeduction, ssoDeduction, earnedDiligence, totalClaims, tripCount, tripAllowanceTotal, netSalary,
                 pvfEmployee, pvfEmployer, ot1_5_pay, ot2_pay, ot3_pay]);
-            
+
             const payrollId = payrollRes.insertId;
+
+            // Update trips status
+            await pool.query(
+                "UPDATE trip_logs SET payroll_id = ?, status = 'paid' WHERE employee_id = ? AND (status = 'unpaid' OR payroll_id IS NULL) AND DATE_FORMAT(trip_date, '%m') = ? AND DATE_FORMAT(trip_date, '%Y') = ?",
+                [payrollId, e.id, monthStr, yearStr]
+            );
 
             // Fix claims
             await pool.query(
@@ -1449,6 +1469,45 @@ app.delete('/api/claims/:id', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// 🚚 TRIP LOGS (บันทึกค่าเที่ยว)
+// ─────────────────────────────────────────────
+app.get('/api/trips', async (req, res) => {
+    try {
+        const { employee_id, month, year } = req.query;
+        let sql = `SELECT t.*, CONCAT(e.first_name, ' ', e.last_name) as employee_name, e.employee_code
+                   FROM trip_logs t
+                   JOIN employees e ON t.employee_id = e.id`;
+        const params = [];
+        if (employee_id) { sql += ' WHERE t.employee_id = ?'; params.push(employee_id); }
+        else if (month && year) {
+            sql += " WHERE DATE_FORMAT(t.trip_date, '%m') = ? AND DATE_FORMAT(t.trip_date, '%Y') = ?";
+            params.push(String(month).padStart(2, '0'), String(year));
+        }
+        sql += ' ORDER BY t.trip_date DESC';
+        const [rows] = await pool.query(sql, params);
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/trips', async (req, res) => {
+    try {
+        const { employee_id, trip_date, amount, notes } = req.body;
+        await pool.query(
+            'INSERT INTO trip_logs (employee_id, trip_date, amount, notes) VALUES (?, ?, ?, ?)',
+            [employee_id, trip_date, amount, notes]
+        );
+        res.status(201).json({ message: 'Trip log saved' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/trips/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM trip_logs WHERE id = ?', [req.params.id]);
+        res.json({ message: 'Trip log deleted' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─────────────────────────────────────────────
 // START SERVER + AUTO MIGRATION
 // ─────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
@@ -1664,9 +1723,23 @@ async function runMigrations() {
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS pvf_employer_rate DECIMAL(5,2) DEFAULT 0.00`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pvf_employee_amount DECIMAL(10,2) DEFAULT 0.00`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pvf_employer_amount DECIMAL(10,2) DEFAULT 0.00`,
-        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_1_5_pay DECIMAL(10,2) DEFAULT 0.00`,
-        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_2_pay DECIMAL(10,2) DEFAULT 0.00`,
-        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_3_pay DECIMAL(10,2) DEFAULT 0.00`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS trip_allowance DECIMAL(10, 2) DEFAULT 0.00`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS trip_count INT DEFAULT 0`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS trip_allowance DECIMAL(10, 2) DEFAULT 0.00`,
+        `CREATE TABLE IF NOT EXISTS trip_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            trip_date DATE NOT NULL,
+            amount DECIMAL(10, 2) NOT NULL,
+            notes TEXT,
+            status VARCHAR(20) DEFAULT 'unpaid',
+            payroll_id INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS trip_allowance DECIMAL(10, 2) DEFAULT 0.00`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS trip_count INT DEFAULT 0`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS trip_allowance DECIMAL(10, 2) DEFAULT 0.00`,
         `CREATE TABLE IF NOT EXISTS overtime_requests (
             id INT AUTO_INCREMENT PRIMARY KEY,
             employee_id INT NOT NULL,

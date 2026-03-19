@@ -25,7 +25,8 @@ interface PayrollRecord {
     name: string;
     department: string;
     baseSalary: number;
-    earnings: { overtime: number; bonus: number; diligenceAllowance?: number; };
+    earnings: { overtime: number; bonus: number; diligenceAllowance?: number; tripAllowance?: number; };
+    trip_count?: number;
     deductions: { tax: number; socialSecurity: number; latePenalty: number; unpaidLeave: number; };
     netSalary?: number;
     status?: 'draft' | 'approved' | 'paid';
@@ -136,10 +137,10 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
             overtime_pay: record.earnings.overtime || 0,
             bonus: record.earnings.bonus || 0,
             diligence_allowance: record.earnings.diligenceAllowance || 0,
-            late_deduction: record.deductions.latePenalty || 0,
-            leave_deduction: record.deductions.unpaidLeave || 0,
             tax_deduction: record.deductions.tax || 0,
             sso_deduction: record.deductions.socialSecurity || 0,
+            trip_count: record.trip_count || 0,
+            trip_allowance: record.earnings.tripAllowance || 0,
         });
         setEditDrawerOpen(true);
     };
@@ -223,22 +224,23 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
     };
 
     const calculateNetSalary = (record: PayrollRecord) => {
-        if (record.netSalary !== undefined) return record.netSalary;
-        const totalEarnings = record.baseSalary + record.earnings.overtime + record.earnings.bonus + (record.earnings.diligenceAllowance || 0);
+        const totalEarnings = record.baseSalary + record.earnings.overtime + record.earnings.bonus + (record.earnings.diligenceAllowance || 0) + (record.earnings.tripAllowance || 0);
         const totalDeductions = record.deductions.tax + record.deductions.socialSecurity + record.deductions.latePenalty + record.deductions.unpaidLeave;
         return totalEarnings - totalDeductions;
     };
 
     const calculateTotalGross = (r: PayrollRecord) =>
-        r.baseSalary + r.earnings.overtime + r.earnings.bonus + (r.earnings.diligenceAllowance || 0);
+        r.baseSalary + r.earnings.overtime + r.earnings.bonus + (r.earnings.diligenceAllowance || 0) + (r.earnings.tripAllowance || 0);
 
     const calculateTotalDeduction = (r: PayrollRecord) =>
         r.deductions.tax + r.deductions.socialSecurity + r.deductions.latePenalty + r.deductions.unpaidLeave;
 
-    const stats = {
-        totalNetSalary: payrollData.reduce((acc, r) => acc + calculateNetSalary(r), 0),
-        totalGross: payrollData.reduce((acc, r) => acc + calculateTotalGross(r), 0),
+    const summary = {
+        total_net: payrollData.reduce((acc, r) => acc + calculateNetSalary(r), 0),
+        total_earned: payrollData.reduce((acc, r) => acc + calculateTotalGross(r), 0),
         totalTaxSocial: payrollData.reduce((acc, r) => acc + r.deductions.tax + r.deductions.socialSecurity, 0),
+        total_trips: payrollData.reduce((acc, r) => acc + (r.trip_count || 0), 0),
+        total_trip_amount: payrollData.reduce((acc, r) => acc + (r.earnings.tripAllowance || 0), 0),
     };
 
     const departments = Array.from(new Set(payrollData.map(d => d.department)));
@@ -261,6 +263,15 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 <div>
                     <div style={{ fontWeight: 500 }}>{text}</div>
                     <div style={{ fontSize: 12, color: '#888' }}>{record.employeeId} | {record.department}</div>
+                </div>
+            )
+        },
+        {
+            title: 'ค่าเที่ยว', key: 'trips', width: 120,
+            render: (_, r) => (
+                <div>
+                    <div>{r.trip_count || 0} รอบ</div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>฿{(r.earnings.tripAllowance || 0).toLocaleString()}</Text>
                 </div>
             )
         },
@@ -355,7 +366,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                     <Card bordered={false} style={{ borderRadius: 8, background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)' }}>
                         <Statistic
                             title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>ยอดรวมรายได้สุทธิ</span>}
-                            value={stats.totalNetSalary} precision={2}
+                            value={summary.total_net} precision={2}
                             valueStyle={{ color: '#fff', fontWeight: 'bold' }} prefix={<DollarOutlined />}
                         />
                     </Card>
@@ -363,7 +374,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 <Col xs={24} sm={8}>
                     <Card bordered={false} style={{ borderRadius: 8 }}>
                         <Statistic
-                            title="ยอดรวมรายจ่ายบริษัท (Gross)" value={stats.totalGross} precision={2}
+                            title="ยอดรวมรายจ่ายบริษัท (Gross)" value={summary.total_earned} precision={2}
                             valueStyle={{ color: '#52c41a', fontWeight: 'bold' }} prefix={<WalletOutlined />}
                         />
                     </Card>
@@ -371,8 +382,8 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 <Col xs={24} sm={8}>
                     <Card bordered={false} style={{ borderRadius: 8 }}>
                         <Statistic
-                            title="ยอดนำส่งภาษี + ประกันสังคม" value={stats.totalTaxSocial} precision={2}
-                            valueStyle={{ color: '#ff4d4f', fontWeight: 'bold' }} prefix={<BankOutlined />}
+                            title="ยอดเงินรวม (สรรพากร/ประกันสังคม)" value={summary.totalTaxSocial} precision={2}
+                            valueStyle={{ color: '#faad14', fontWeight: 'bold' }} prefix={<BankOutlined />}
                         />
                     </Card>
                 </Col>
