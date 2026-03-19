@@ -18,6 +18,7 @@ import isBetween from 'dayjs/plugin/isBetween';
 import axios from 'axios';
 import { API_BASE } from './config';
 import { parseLeaveCSV } from './utils/csvProcessor';
+import { toThaiDate } from './utils/thaiDate';
 
 dayjs.extend(isBetween);
 
@@ -175,8 +176,8 @@ export const Leave: React.FC = () => {
             key: 'date',
             render: (_, record) => (
                 <div>
-                    {dayjs(record.start_date).format('DD MMM YYYY')}
-                    {record.start_date !== record.end_date && ` - ${dayjs(record.end_date).format('DD MMM YYYY')}`}
+                    {toThaiDate(record.start_date)}
+                    {record.start_date !== record.end_date && ` - ${toThaiDate(record.end_date)}`}
                     <div style={{ fontSize: '12px', color: '#888', marginTop: 4 }}>
                         <ClockCircleOutlined style={{ marginRight: 4 }} />
                         รวม {record.total_days} วัน

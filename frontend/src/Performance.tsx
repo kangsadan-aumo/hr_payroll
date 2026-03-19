@@ -154,8 +154,19 @@ export const Performance: React.FC = () => {
             <Modal title="สร้างรอบการประเมิน" open={evalModalOpen} onOk={() => evalForm.submit()} onCancel={() => setEvalModalOpen(false)}>
                 <Form form={evalForm} layout="vertical" onFinish={handleSaveEval} initialValues={{ status: 'draft' }}>
                     <Form.Item name="employee_id" label="พนักงาน" rules={[{ required: true }]}>
-                        <Select placeholder="เลือกพนักงาน">
-                            {employees.map(e => <Select.Option key={e.id} value={e.id}>{e.name}</Select.Option>)}
+                        <Select
+                            showSearch
+                            placeholder="ค้นหาชื่อ หรือ รหัสพนักงาน"
+                            optionFilterProp="children"
+                            filterOption={(input, option) => 
+                                String(option?.children || '').toLowerCase().includes(input.toLowerCase())
+                            }
+                        >
+                            {employees.map(e => (
+                                <Select.Option key={e.id} value={e.id}>
+                                    {e.first_name || e.name} {e.last_name || ''} ({e.employee_code})
+                                </Select.Option>
+                            ))}
                         </Select>
                     </Form.Item>
                     <Form.Item name="period_name" label="ชื่อรอบการประเมิน" rules={[{ required: true }]}><Input placeholder="เช่น Q1 2024" /></Form.Item>

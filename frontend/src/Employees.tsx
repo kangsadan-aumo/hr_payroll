@@ -147,6 +147,17 @@ export const Employees: React.FC = () => {
         }
     };
 
+    const handleDeleteDept = async (e: React.MouseEvent, id: number) => {
+        e.stopPropagation();
+        try {
+            const res = await axios.delete(`${API}/departments/${id}`);
+            message.success(res.data.message);
+            await fetchData();
+        } catch (error: any) {
+            message.error(error.response?.data?.error || 'ไม่สามารถลบแผนกได้');
+        }
+    };
+
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -825,7 +836,20 @@ export const Employees: React.FC = () => {
                                         </>
                                     )}
                                 >
-                                    {departmentsList.map(d => <Option key={d.id} value={d.id}>{d.name}</Option>)}
+                                    {departmentsList.map(d => (
+                                        <Option key={d.id} value={d.id}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span>{d.name}</span>
+                                                <Button 
+                                                    type="text" 
+                                                    size="small" 
+                                                    danger 
+                                                    icon={<DeleteOutlined style={{ fontSize: 13 }} />} 
+                                                    onClick={(ev) => handleDeleteDept(ev, d.id)}
+                                                />
+                                            </div>
+                                        </Option>
+                                    ))}
                                 </Select>
                             </Form.Item>
                         </Col>

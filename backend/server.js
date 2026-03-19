@@ -348,8 +348,12 @@ app.put('/api/departments/:id', async (req, res) => {
 
 app.delete('/api/departments/:id', async (req, res) => {
     try {
+        const [inUse] = await pool.query('SELECT COUNT(*) as count FROM employees WHERE department_id = ?', [req.params.id]);
+        if (inUse[0].count > 0) {
+            return res.status(400).json({ error: 'ไม่สามารถลบแผนกได้ เนื่องจากมีพนักงานสังกัดข้อมูลชุดนี้อยู่' });
+        }
         await pool.query('DELETE FROM departments WHERE id = ?', [req.params.id]);
-        res.json({ message: 'Department deleted' });
+        res.json({ message: 'ลบแผนกเรียบร้อยแล้ว' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 

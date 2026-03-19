@@ -1,4 +1,11 @@
 import { useState, useEffect } from 'react';
+import { ConfigProvider } from 'antd';
+import thTH from 'antd/es/locale/th_TH';
+import dayjs from 'dayjs';
+import 'dayjs/locale/th';
+
+dayjs.locale('th');
+
 import { MainLayout } from './MainLayout';
 import { Dashboard } from './Dashboard';
 import { DataImport } from './DataImport';
@@ -79,9 +86,11 @@ function App() {
   };
 
   return (
-    <MainLayout activeMenu={activeMenu} onMenuClick={(key) => key === 'logout' ? handleLogout() : setActiveMenu(key)}>
-      {renderContent()}
-    </MainLayout>
+    <ConfigProvider locale={thTH}>
+      <MainLayout activeMenu={activeMenu} onMenuClick={(key) => key === 'logout' ? handleLogout() : setActiveMenu(key)}>
+        {renderContent()}
+      </MainLayout>
+    </ConfigProvider>
   );
 }
 

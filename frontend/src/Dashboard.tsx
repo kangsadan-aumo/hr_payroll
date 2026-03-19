@@ -24,6 +24,7 @@ import {
 } from 'recharts';
 import axios from 'axios';
 import dayjs from 'dayjs';
+import { toThaiDate, toThaiMonth } from './utils/thaiDate';
 import { API_BASE } from './config';
 
 const { Title, Text } = Typography;
@@ -78,14 +79,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         fetchDashboardData();
     }, []);
 
-    const todayStr = dayjs().locale('th').format('D MMMM YYYY');
+    const todayStr = toThaiDate(dayjs());
 
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                 <div>
                     <Title level={2} style={{ margin: 0 }}>ภาพรวมระบบ HR</Title>
-                    <Text type="secondary">ยินดีต้อนรับกลับเข้าสู่ระบบ, สรุปสถานะประจำวันที่ {todayStr}</Text>
+                    <Text type="secondary">ยินดีต้อนรับเข้าสู่ระบบ, สรุปสถานะประจำวันที่ {todayStr}</Text>
                 </div>
                 <Space>
                     <Button icon={<DollarOutlined />} type="primary" onClick={() => onNavigate?.('payroll')}>จัดการเงินเดือน</Button>
@@ -169,8 +170,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                 {adminAlerts.pendingClaimsCount > 0 && (
                                     <Col span={8}>
                                         <Alert
-                                            message="พบคลิมรอดำเนินการ (Pending Claims)"
-                                            description={`มีทั้งหมด ${adminAlerts.pendingClaimsCount} รายการที่รอ Admin ตรวจสอบ`}
+                                            message="รอดำเนินการ"
+                                            description={`มีทั้งหมด ${adminAlerts.pendingClaimsCount} รายการที่รอ HR ตรวจสอบ`}
                                             type="info"
                                             showIcon
                                             action={<Button size="small" type="default" onClick={() => onNavigate?.('claims')}>ไปที่หน้าเบิกจ่าย</Button>}
@@ -210,7 +211,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 </Col>
                 <Col xs={24} lg={12}>
                     <Card
-                        title="สัดส่วนพนักงานแยกตามแผนก"
+                        title="พนักงานแยกตามแผนก"
                         bordered={false}
                         style={{ borderRadius: 8, height: '100%', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
                         loading={loading}
@@ -245,7 +246,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                 const pPresent = Math.round((todayAttendance.present / total) * 100);
                                 const pLeave = Math.round((todayAttendance.leave / total) * 100);
                                 const pAbsent = Math.round((todayAttendance.absent / total) * 100);
-                                
+
                                 return (
                                     <>
                                         <div>
@@ -298,25 +299,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                     >
                         <div style={{ height: 350 }}>
                             {payrollTrends.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={payrollTrends.map(d => ({ ...d, monthName: dayjs(`${d.year}-${d.month}-01`).format('MMM YYYY') }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                    <XAxis dataKey="monthName" axisLine={false} tickLine={false} />
-                                    <YAxis 
-                                        axisLine={false} 
-                                        tickLine={false} 
-                                        tickFormatter={(value) => `฿${(value / 1000).toFixed(0)}k`} 
-                                    />
-                                    <Tooltip 
-                                        cursor={{ fill: '#f5f5f5' }} 
-                                        formatter={(value: any) => `฿ ${Number(value).toLocaleString()}`}
-                                    />
-                                    <Legend />
-                                    <Bar dataKey="total_net" name="เงินเดือนสุทธิ" fill="#52c41a" radius={[4, 4, 0, 0]} />
-                                    <Bar dataKey="total_base" name="เงินเดือนพื้นฐาน" fill="#1890ff" radius={[4, 4, 0, 0]} />
-                                    <Bar dataKey="total_ot" name="ค่าล่วงเวลา (OT)" fill="#faad14" radius={[4, 4, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={payrollTrends.map(d => ({ ...d, monthName: dayjs(`${d.year}-${d.month}-01`).format('MMM YYYY') }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                        <XAxis dataKey="monthName" axisLine={false} tickLine={false} />
+                                        <YAxis
+                                            axisLine={false}
+                                            tickLine={false}
+                                            tickFormatter={(value) => `฿${(value / 1000).toFixed(0)}k`}
+                                        />
+                                        <Tooltip
+                                            cursor={{ fill: '#f5f5f5' }}
+                                            formatter={(value: any) => `฿ ${Number(value).toLocaleString()}`}
+                                        />
+                                        <Legend />
+                                        <Bar dataKey="total_net" name="เงินเดือนสุทธิ" fill="#52c41a" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="total_base" name="เงินเดือนพื้นฐาน" fill="#1890ff" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="total_ot" name="ค่าล่วงเวลา (OT)" fill="#faad14" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
                             ) : (
                                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#999' }}>
                                     ยังไม่มีประวัติการจ่ายเงินเดือน
@@ -336,33 +337,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                     >
                         <Spin spinning={loading}>
                             {recentActivities.length > 0 ? (
-                            <List
-                                itemLayout="horizontal"
-                                dataSource={recentActivities}
-                                renderItem={item => (
-                                    <List.Item>
-                                        <List.Item.Meta
-                                            avatar={
-                                                <Avatar
-                                                    icon={
-                                                        item.type === 'hire' ? <UserAddOutlined /> :
-                                                            item.type === 'leave' ? <CheckCircleOutlined /> :
-                                                                item.type === 'system' ? <SettingOutlined /> : <UserDeleteOutlined />
-                                                    }
-                                                    style={{
-                                                        backgroundColor:
-                                                            item.type === 'hire' ? '#52c41a' :
-                                                                item.type === 'leave' ? '#1890ff' :
-                                                                    item.type === 'system' ? '#faad14' : '#ff4d4f'
-                                                    }}
-                                                />
-                                            }
-                                            title={item.title}
-                                            description={item.time}
-                                        />
-                                    </List.Item>
-                                )}
-                            />
+                                <List
+                                    itemLayout="horizontal"
+                                    dataSource={recentActivities}
+                                    renderItem={item => (
+                                        <List.Item>
+                                            <List.Item.Meta
+                                                avatar={
+                                                    <Avatar
+                                                        icon={
+                                                            item.type === 'hire' ? <UserAddOutlined /> :
+                                                                item.type === 'leave' ? <CheckCircleOutlined /> :
+                                                                    item.type === 'system' ? <SettingOutlined /> : <UserDeleteOutlined />
+                                                        }
+                                                        style={{
+                                                            backgroundColor:
+                                                                item.type === 'hire' ? '#52c41a' :
+                                                                    item.type === 'leave' ? '#1890ff' :
+                                                                        item.type === 'system' ? '#faad14' : '#ff4d4f'
+                                                        }}
+                                                    />
+                                                }
+                                                title={item.title}
+                                                description={item.time}
+                                            />
+                                        </List.Item>
+                                    )}
+                                />
                             ) : (
                                 <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>ไม่มีกิจกรรมล่าสุด</div>
                             )}
