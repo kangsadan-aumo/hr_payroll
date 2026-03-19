@@ -1571,7 +1571,7 @@ async function runMigrations() {
             end_date DATE NOT NULL,
             total_days DECIMAL(5, 2) NOT NULL,
             reason TEXT,
-            status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+            status ENUM('pending', 'approved', 'rejected', 'cancelled') DEFAULT 'pending',
             submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             approved_by INT,
             approved_at TIMESTAMP NULL,
@@ -1617,6 +1617,9 @@ async function runMigrations() {
             pvf_employee_amount DECIMAL(10,2) DEFAULT 0.00,
             pvf_employer_amount DECIMAL(10,2) DEFAULT 0.00,
             net_salary DECIMAL(10, 2) NOT NULL,
+            ot_1_5_pay DECIMAL(10, 2) DEFAULT 0.00,
+            ot_2_pay DECIMAL(10, 2) DEFAULT 0.00,
+            ot_3_pay DECIMAL(10, 2) DEFAULT 0.00,
             status ENUM('draft', 'paid') DEFAULT 'draft',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
@@ -1826,6 +1829,12 @@ async function runMigrations() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
         `DELETE t1 FROM leave_types t1 JOIN leave_types t2 WHERE t1.id > t2.id AND t1.name = t2.name`,
         `ALTER TABLE leave_types ADD UNIQUE (name)`,
+        `ALTER TABLE leave_requests MODIFY COLUMN status ENUM('pending', 'approved', 'rejected', 'cancelled') DEFAULT 'pending'`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_1_5_pay DECIMAL(10, 2) DEFAULT 0.00`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_2_pay DECIMAL(10, 2) DEFAULT 0.00`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_3_pay DECIMAL(10, 2) DEFAULT 0.00`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS trip_count INT DEFAULT 0`,
+        `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS trip_allowance DECIMAL(10, 2) DEFAULT 0.00`,
     ];
     for (const sql of migrations) {
         try {
