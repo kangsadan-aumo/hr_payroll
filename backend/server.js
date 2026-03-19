@@ -183,6 +183,33 @@ app.get('/api/test', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// 💡 AUDIT LOGGER
+// ─────────────────────────────────────────────
+async function logAudit(userId, action, targetTable, targetId, details) {
+    try {
+        await pool.query(
+            'INSERT INTO audit_logs (user_id, action, target_table, target_id, details) VALUES (?, ?, ?, ?, ?)',
+            [userId || 1, action, targetTable, targetId, JSON.stringify(details)]
+        );
+    } catch (err) {
+        console.error('Audit log error:', err.message);
+    }
+}
+
+// ─────────────────────────────────────────────
+// TEST ROUTE
+// ─────────────────────────────────────────────
+app.get('/api/test', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT 1 + 1 AS solution');
+        res.json({ message: 'Database connected successfully', data: rows });
+    } catch (error) {
+        console.error('Database connection failed:', error);
+        res.status(500).json({ error: 'Database connection failed' });
+    }
+});
+
+// ─────────────────────────────────────────────
 // DASHBOARD
 // ─────────────────────────────────────────────
 app.get('/api/dashboard/stats', async (req, res) => {
@@ -391,15 +418,17 @@ app.get('/api/employees', async (req, res) => {
     try {
         const [employees] = await pool.query(`
             SELECT e.*, d.name AS department_name, c.name AS company_name,
-            m.first_name AS manager_name_first, m.last_name AS manager_name_last,
-            e.username, e.must_change_password
+            m.first_name AS manager_name_first, m.last_name AS manager_name_last
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN subsidiaries c ON e.company_id = c.id
             LEFT JOIN employees m ON e.reports_to = m.id
         `);
         res.json(employees);
-    } catch (error) { res.status(500).json({ error: error.message }); }
+    } catch (error) { 
+        console.error('API Error /api/employees:', error);
+        res.status(500).json({ error: error.message }); 
+    }
 });
 
 app.post('/api/employees', async (req, res) => {
@@ -1770,15 +1799,25 @@ async function runMigrations() {
         `CREATE TABLE IF NOT EXISTS employees (
             id INT AUTO_INCREMENT PRIMARY KEY,
             employee_code VARCHAR(50) UNIQUE NOT NULL,
+            username VARCHAR(50) UNIQUE,
+            password VARCHAR(255),
+            role VARCHAR(20) DEFAULT 'employee',
+            must_change_password TINYINT(1) DEFAULT 0,
             first_name VARCHAR(100) NOT NULL,
             last_name VARCHAR(100) NOT NULL,
             department_id INT,
+            company_id INT,
             position VARCHAR(100),
             join_date DATE NOT NULL,
             status ENUM('active', 'inactive') DEFAULT 'active',
             shift_id INT,
             base_salary DECIMAL(10, 2) DEFAULT 0.00,
+            phone VARCHAR(20),
+            email VARCHAR(100),
             id_number VARCHAR(13) DEFAULT NULL,
+            probation_end_date DATE,
+            contract_end_date DATE,
+            notes TEXT,
             reports_to INT DEFAULT NULL,
             spouse_allowance TINYINT(1) DEFAULT 0,
             children_count INT DEFAULT 0,
@@ -1787,6 +1826,7 @@ async function runMigrations() {
             life_insurance DECIMAL(10,2) DEFAULT 0.00,
             pvf_rate DECIMAL(5,2) DEFAULT 0.00,
             pvf_employer_rate DECIMAL(5,2) DEFAULT 0.00,
+            trip_allowance DECIMAL(10,2) DEFAULT 0.00,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
@@ -2066,6 +2106,11 @@ async function runMigrations() {
         `DELETE t1 FROM leave_types t1 JOIN leave_types t2 WHERE t1.id > t2.id AND t1.name = t2.name`,
         `ALTER TABLE leave_types ADD UNIQUE (name)`,
         `ALTER TABLE leave_requests MODIFY COLUMN status ENUM('pending', 'approved', 'rejected', 'cancelled') DEFAULT 'pending'`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS username VARCHAR(50) UNIQUE AFTER employee_code`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS password VARCHAR(255) AFTER username`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'employee' AFTER password`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS must_change_password TINYINT(1) DEFAULT 0 AFTER role`,
+        `UPDATE employees SET username = employee_code, password = employee_code, must_change_password = 1 WHERE username IS NULL`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_1_5_pay DECIMAL(10, 2) DEFAULT 0.00`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_2_pay DECIMAL(10, 2) DEFAULT 0.00`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS ot_3_pay DECIMAL(10, 2) DEFAULT 0.00`,
