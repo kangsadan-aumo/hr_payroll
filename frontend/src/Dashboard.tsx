@@ -24,7 +24,7 @@ import {
 } from 'recharts';
 import axios from 'axios';
 import dayjs from 'dayjs';
-import { toThaiDate, toThaiMonth } from './utils/thaiDate';
+import { toThaiDate } from './utils/thaiDate';
 import { API_BASE } from './config';
 
 const { Title, Text } = Typography;
