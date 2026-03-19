@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, TimePicker, DatePicker, Card, Col, Row, Select, message, Table, Space, Tag, Modal, Spin, Divider } from 'antd';
+import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, TimePicker, DatePicker, Card, Col, Row, Select, message, Table, Space, Tag, Modal, Spin, Divider, Popconfirm } from 'antd';
 import { SaveOutlined, BankOutlined, FieldTimeOutlined, CalendarOutlined, SafetyCertificateOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axios from 'axios';
@@ -30,11 +30,15 @@ export const Settings: React.FC = () => {
     const [isLeaveRuleModalOpen, setIsLeaveRuleModalOpen] = useState(false);
     const [isLeaveTypeModalOpen, setIsLeaveTypeModalOpen] = useState(false);
     const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
+    const [isSubsidiaryModalOpen, setIsSubsidiaryModalOpen] = useState(false);
 
     // Edit states
     const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
     const [editingLeaveRuleId, setEditingLeaveRuleId] = useState<string | null>(null);
     const [editingLeaveTypeId, setEditingLeaveTypeId] = useState<string | null>(null);
+    const [editingSubsidiaryId, setEditingSubsidiaryId] = useState<string | null>(null);
+    const [subsidiaries, setSubsidiaries] = useState<any[]>([]);
+    const [subsidiaryForm] = Form.useForm();
 
 
 
@@ -42,12 +46,13 @@ export const Settings: React.FC = () => {
     const fetchAllData = async () => {
         setLoading(true);
         try {
-            const [settingsRes, shiftsRes, leaveRulesRes, leaveTypesRes, holidaysRes] = await Promise.all([
+            const [settingsRes, shiftsRes, leaveRulesRes, leaveTypesRes, holidaysRes, subsidiariesRes] = await Promise.all([
                 axios.get(`${API_BASE}/settings`),
                 axios.get(`${API_BASE}/shifts`),
                 axios.get(`${API_BASE}/leave-rules`),
                 axios.get(`${API_BASE}/leave-types`),
-                axios.get(`${API_BASE}/settings/holidays`)
+                axios.get(`${API_BASE}/settings/holidays`),
+                axios.get(`${API_BASE}/subsidiaries`)
             ]);
 
             // Set Company Info
@@ -73,6 +78,7 @@ export const Settings: React.FC = () => {
             setLeaveRules(leaveRulesRes.data);
             setOtherLeaves(leaveTypesRes.data);
             setPublicHolidays(holidaysRes.data);
+            setSubsidiaries(subsidiariesRes.data);
         } catch (error) {
             console.error(error);
             message.error('Failed to load settings data');
@@ -175,6 +181,42 @@ export const Settings: React.FC = () => {
             message.success('ลบเกณฑ์อายุงานสำเร็จ');
             fetchAllData();
         } catch (error) { message.error('เกิดข้อผิดพลาดในการลบอายุงาน'); }
+    };
+
+    // Subsidiaries
+    const handleSaveSubsidiary = async (values: any) => {
+        try {
+            if (editingSubsidiaryId) {
+                await axios.put(`${API_BASE}/subsidiaries/${editingSubsidiaryId}`, values);
+                message.success('อัปเดตข้อมูลบริษัทย่อยสำเร็จ');
+            } else {
+                await axios.post(`${API_BASE}/subsidiaries`, values);
+                message.success('เพิ่มบริษัทย่อยสำเร็จ');
+            }
+            setIsSubsidiaryModalOpen(false);
+            setEditingSubsidiaryId(null);
+            subsidiaryForm.resetFields();
+            fetchAllData();
+        } catch (error) { message.error('เกิดข้อผิดพลาดในการบันทึกข้อมูลบริษัท'); }
+    };
+
+    const handleDeleteSubsidiary = async (id: string) => {
+        try {
+            await axios.delete(`${API_BASE}/subsidiaries/${id}`);
+            message.success('ลบบริษัทย่อยสำเร็จ');
+            fetchAllData();
+        } catch (error) { message.error('เกิดข้อผิดพลาดในการลบบริษัท'); }
+    };
+
+    const openSubsidiaryModal = (record?: any) => {
+        if (record) {
+            setEditingSubsidiaryId(record.id);
+            subsidiaryForm.setFieldsValue(record);
+        } else {
+            setEditingSubsidiaryId(null);
+            subsidiaryForm.resetFields();
+        }
+        setIsSubsidiaryModalOpen(true);
     };
 
     // Other Leaves (Types)
@@ -324,7 +366,7 @@ export const Settings: React.FC = () => {
             </div>
 
             <Card bordered={false} style={{ borderRadius: 8, minHeight: 'calc(100vh - 160px)' }}>
-                <Tabs defaultActiveKey="1" tabPosition="left">
+                <Tabs defaultActiveKey="1" className="settings-tabs">
                     <TabPane tab={<span><BankOutlined /> ข้อมูลบริษัท & นโยบาย</span>} key="1">
                         <div style={{ maxWidth: 800, paddingLeft: 24 }}>
                             <Title level={4}>ข้อมูลบริษัท</Title>
@@ -484,6 +526,36 @@ export const Settings: React.FC = () => {
                         </div>
                     </TabPane>
 
+                    <TabPane tab={<span><BankOutlined /> จัดการบริษัทย่อย (3 บริษัท)</span>} key="6">
+                        <div style={{ paddingLeft: 24 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                                <Title level={4}>ข้อมูลบริษัทย่อย (Subsidiaries)</Title>
+                                <Button type="primary" icon={<PlusOutlined />} onClick={() => openSubsidiaryModal()}>เพิ่มบริษัท</Button>
+                            </div>
+                            <Table 
+                                dataSource={subsidiaries} 
+                                rowKey="id"
+                                bordered
+                                columns={[
+                                    { title: 'ชื่อบริษัท', dataIndex: 'name', key: 'name' },
+                                    { title: 'เลขประจำตัวผู้เสียภาษี', dataIndex: 'tax_id', key: 'tax_id' },
+                                    { title: 'ที่อยู่', dataIndex: 'address', key: 'address', ellipsis: true },
+                                    { 
+                                        title: 'จัดการ', key: 'action', align: 'center',
+                                        render: (_, record) => (
+                                            <Space>
+                                                <Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => openSubsidiaryModal(record)} />
+                                                <Popconfirm title="ยืนยันการลบ?" onConfirm={() => handleDeleteSubsidiary(record.id)}>
+                                                    <Button type="text" danger icon={<DeleteOutlined />} />
+                                                </Popconfirm>
+                                            </Space>
+                                        ) 
+                                    }
+                                ]}
+                            />
+                        </div>
+                    </TabPane>
+
                 </Tabs>
             </Card>
 
@@ -530,6 +602,26 @@ export const Settings: React.FC = () => {
                     </Form.Item>
                     <Form.Item name="holidayName" label="ชื่อวันหยุด" rules={[{ required: true, message: 'กรุณาระบุชื่อวันหยุด' }]}>
                         <Input placeholder="เช่น วันขึ้นปีใหม่" />
+                    </Form.Item>
+                </Form>
+            </Modal>
+            <Modal
+                title={editingSubsidiaryId ? 'แก้ไขข้อมูลบริษัท' : 'เพิ่มบริษัทย่อยใหม่'}
+                open={isSubsidiaryModalOpen}
+                onCancel={() => setIsSubsidiaryModalOpen(false)}
+                onOk={() => subsidiaryForm.submit()}
+                okText="บันทึก"
+                cancelText="ยกเลิก"
+            >
+                <Form form={subsidiaryForm} layout="vertical" onFinish={handleSaveSubsidiary}>
+                    <Form.Item name="name" label="ชื่อบริษัท" rules={[{ required: true, message: 'กรุณากรอกชื่อบริษัท' }]}>
+                        <Input placeholder="เช่น บริษัท รวยทรัพย์ จำกัด" />
+                    </Form.Item>
+                    <Form.Item name="tax_id" label="เลขประจำตัวผู้เสียภาษี">
+                        <Input placeholder="เลข 13 หลัก" maxLength={13} />
+                    </Form.Item>
+                    <Form.Item name="address" label="ที่อยู่ (จะไปปรากฏบนหัวสลิป)">
+                        <Input.TextArea rows={3} placeholder="ระบุที่อยู่สำนักงาน" />
                     </Form.Item>
                 </Form>
             </Modal>

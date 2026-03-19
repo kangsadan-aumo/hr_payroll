@@ -14,6 +14,7 @@ import dayjs from 'dayjs';
 import axios from 'axios';
 import { API_BASE } from './config';
 import * as XLSX from 'xlsx';
+import { toThaiDate, toThaiMonth } from './utils/thaiDate';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -30,6 +31,9 @@ interface PayrollRecord {
     status?: 'draft' | 'approved' | 'paid';
     period?: { month: number; year: number };
     isPreview?: boolean;
+    company_name?: string;
+    company_address?: string;
+    company_tax_id?: string;
 }
 
 const API = `${API_BASE}`;
@@ -398,7 +402,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
 
             {/* PAYSLIP MODAL */}
             <Modal
-                title={`สลิปเงินเดือน — ${monthFilter?.format('MMMM YYYY')}`}
+                title={`สลิปเงินเดือน — ${toThaiMonth(currentMonth, currentYear)}`}
                 open={isPayslipModalVisible}
                 onCancel={() => setIsPayslipModalVisible(false)}
                 footer={
@@ -412,8 +416,9 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 {selectedEmployee && (
                     <div ref={printRef} style={{ padding: 20, border: '1px solid #f0f0f0', borderRadius: 8 }}>
                         <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                            <Title level={4} style={{ margin: 0 }}>{companyName}</Title>
-                            <Text>สลิปเงินเดือน ประจำเดือน {monthFilter?.format('MM/YYYY')}</Text>
+                            <Title level={4} style={{ margin: 0 }}>{selectedEmployee.company_name || companyName}</Title>
+                            {selectedEmployee.company_address && <div style={{ fontSize: 12 }}>{selectedEmployee.company_address}</div>}
+                            <Text>สลิปเงินเดือน ประจำกะเวลา/รอบเดือน {toThaiMonth(currentMonth, currentYear)}</Text>
                         </div>
                         <Divider style={{ margin: '10px 0' }} />
                         <Row style={{ marginBottom: 16 }}>

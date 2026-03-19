@@ -23,6 +23,7 @@ import Papa from 'papaparse';
 const { Dragger } = Upload;
 
 import { API_BASE as API } from './config';
+import { toThaiDate } from './utils/thaiDate';
 
 interface Employee {
     id: string;
@@ -38,6 +39,10 @@ interface Employee {
     id_number?: string;
     reports_to?: number;
     manager_name?: string;
+    company_id?: number;
+    company_name?: string;
+    first_name: string;
+    last_name: string;
 }
 
 interface CsvRow {
@@ -97,6 +102,7 @@ export const Employees: React.FC = () => {
     const [drawerVisible, setDrawerVisible] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
     const [loading, setLoading] = useState(false);
+    const [subsidiariesList, setSubsidiariesList] = useState<any[]>([]);
     const [form] = Form.useForm();
 
     // CSV import states
@@ -122,12 +128,19 @@ export const Employees: React.FC = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [empRes, depRes] = await Promise.all([
+            const [empRes, depRes, subRes] = await Promise.all([
                 axios.get(`${API}/employees`),
                 axios.get(`${API}/departments`),
+                axios.get(`${API}/subsidiaries`),
             ]);
-            setEmployees(empRes.data);
+            setEmployees(empRes.data.map((e: any) => ({
+                ...e,
+                name: `${e.first_name} ${e.last_name}`,
+                joinDate: e.join_date,
+                baseSalary: e.base_salary
+            })));
             setDepartmentsList(depRes.data);
+            setSubsidiariesList(subRes.data);
         } catch {
             message.error('Failed to fetch data');
         } finally {
@@ -299,6 +312,7 @@ export const Employees: React.FC = () => {
             form.setFieldsValue({ 
                 ...record, 
                 department_id: dep ? dep.id : null, 
+                company_id: record.company_id,
                 joinDate: dayjs(record.joinDate),
                 base_salary: record.baseSalary 
             });
@@ -326,6 +340,7 @@ export const Employees: React.FC = () => {
             base_salary: values.base_salary || 0,
             id_number: values.id_number || null,
             reports_to: values.reports_to || null,
+            company_id: values.company_id || null,
         };
         try {
             if (editingEmployee) {
@@ -439,8 +454,12 @@ export const Employees: React.FC = () => {
         { title: 'ตำแหน่ง', dataIndex: 'position', key: 'position' },
         {
             title: 'วันที่เริ่มงาน', dataIndex: 'joinDate', key: 'joinDate',
-            render: (date: string) => dayjs(date).format('DD MMM YYYY'),
+            render: (date: string) => toThaiDate(date, 'short'),
             sorter: (a, b) => dayjs(a.joinDate).unix() - dayjs(b.joinDate).unix()
+        },
+        {
+            title: 'สังกัดบริษัท', dataIndex: 'company_name', key: 'company_name',
+            render: (text) => text || <Text type="secondary">ไม่ระบุ</Text>
         },
         { 
             title: 'หัวหน้างาน (Manager)', key: 'manager', 
@@ -746,10 +765,19 @@ export const Employees: React.FC = () => {
                     </Row>
                     <Row gutter={16}>
                         <Col span={12}>
+                            <Form.Item name="company_id" label="สังกัดบริษัท (เพื่อแยกชื่อบนสลิป)" rules={[{ required: true, message: 'กรุณาเลือกบริษัทที่สังกัด' }]}>
+                                <Select placeholder="เลือกบริษัท">
+                                    {subsidiariesList.map(s => <Option key={s.id} value={s.id}>{s.name}</Option>)}
+                                </Select>
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
                             <Form.Item name="joinDate" label="วันที่เริ่มปฏิบัติงาน" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]}>
                                 <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
                             </Form.Item>
                         </Col>
+                    </Row>
+                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="department_id" label="แผนก" rules={[{ required: true, message: 'กรุณาเลือกแผนก' }]}>
                                 <Select placeholder="เลือกแผนก">
@@ -757,37 +785,37 @@ export const Employees: React.FC = () => {
                                 </Select>
                             </Form.Item>
                         </Col>
-                    </Row>
-                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="position" label="ตำแหน่ง" rules={[{ required: true, message: 'กรุณากรอกตำแหน่ง' }]}>
                                 <Input placeholder="เช่น HR Admin" />
                             </Form.Item>
                         </Col>
+                    </Row>
+                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="phone" label="เบอร์โทรศัพท์">
                                 <Input placeholder="08x-xxx-xxxx" />
                             </Form.Item>
                         </Col>
-                    </Row>
-                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="email" label="อีเมล">
                                 <Input placeholder="email@company.com" />
                             </Form.Item>
                         </Col>
+                    </Row>
+                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="base_salary" label="เงินเดือนพื้นฐาน (บาท)">
                                 <Input type="number" placeholder="เช่น 25000" prefix="฿" />
                             </Form.Item>
                         </Col>
-                    </Row>
-                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="id_number" label="เลขประจำตัวประชาชน (13 หลัก)" rules={[{ len: 13, message: 'เลขบัตรประชาชนต้องมี 13 หลัก' }]}>
                                 <Input placeholder="1xxxxxxxxxxxx" maxLength={13} />
                             </Form.Item>
                         </Col>
+                    </Row>
+                    <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item name="status" label="สถานะการทำงาน" rules={[{ required: true }]}>
                                 <Select>

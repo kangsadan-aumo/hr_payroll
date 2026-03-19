@@ -16,6 +16,16 @@ CREATE TABLE IF NOT EXISTS departments (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS subsidiaries (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    tax_id VARCHAR(50),
+    address TEXT,
+    logo_path VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 2. Shifts Table (กะการทำงาน)
 CREATE TABLE IF NOT EXISTS shifts (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -39,6 +49,7 @@ CREATE TABLE IF NOT EXISTS employees (
     join_date DATE NOT NULL,
     status VARCHAR(20) DEFAULT 'active',
     shift_id INT,
+    company_id INT,
     base_salary DECIMAL(10, 2) DEFAULT 0.00,
     phone VARCHAR(20) DEFAULT NULL,
     email VARCHAR(150) DEFAULT NULL,
@@ -47,7 +58,8 @@ CREATE TABLE IF NOT EXISTS employees (
     reports_to INT,
     FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
     FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE SET NULL,
-    FOREIGN KEY (reports_to) REFERENCES employees(id) ON DELETE SET NULL
+    FOREIGN KEY (reports_to) REFERENCES employees(id) ON DELETE SET NULL,
+    FOREIGN KEY (company_id) REFERENCES subsidiaries(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 4. Leave Types (ประเภทการลา)

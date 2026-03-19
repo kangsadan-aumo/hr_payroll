@@ -289,93 +289,138 @@ app.get('/api/dashboard/stats', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// 🏢 SUBSIDIARIES (บริษัทย่อย)
+// ─────────────────────────────────────────────
+app.get('/api/subsidiaries', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM subsidiaries ORDER BY id ASC');
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/subsidiaries', async (req, res) => {
+    try {
+        const { name, tax_id, address } = req.body;
+        await pool.query('INSERT INTO subsidiaries (name, tax_id, address) VALUES (?, ?, ?)', [name, tax_id, address]);
+        res.status(201).json({ message: 'Subsidiary created' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/subsidiaries/:id', async (req, res) => {
+    try {
+        const { name, tax_id, address } = req.body;
+        await pool.query('UPDATE subsidiaries SET name=?, tax_id=?, address=? WHERE id=?', [name, tax_id, address, req.params.id]);
+        res.json({ message: 'Subsidiary updated' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/subsidiaries/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM subsidiaries WHERE id = ?', [req.params.id]);
+        res.json({ message: 'Subsidiary deleted' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─────────────────────────────────────────────
+// 🏢 DEPARTMENTS (แผนก)
+// ─────────────────────────────────────────────
 app.get('/api/departments', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM departments ORDER BY id ASC');
         res.json(rows);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
+
+app.post('/api/departments', async (req, res) => {
+    try {
+        const { name } = req.body;
+        await pool.query('INSERT INTO departments (name) VALUES (?)', [name]);
+        res.status(201).json({ message: 'Department created' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/departments/:id', async (req, res) => {
+    try {
+        await pool.query('UPDATE departments SET name=? WHERE id=?', [req.body.name, req.params.id]);
+        res.json({ message: 'Department updated' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/departments/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM departments WHERE id = ?', [req.params.id]);
+        res.json({ message: 'Department deleted' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
 // ─────────────────────────────────────────────
-// Settings moved down for better organization
-
-
-// REMOVED duplicate route
-
-// ─────────────────────────────────────────────
-// EMPLOYEES
+// 👥 EMPLOYEES
 // ─────────────────────────────────────────────
 app.get('/api/employees', async (req, res) => {
     try {
         const [rows] = await pool.query(`
-            SELECT e.*, d.name as department_name, s.name as shift_name, 
-                   CONCAT(m.first_name, ' ', m.last_name) as manager_name
+            SELECT e.*, d.name as department_name, s.name as shift_name, s.start_time, s.end_time,
+                   sub.name as company_name
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN shifts s ON e.shift_id = s.id
-            LEFT JOIN employees m ON e.reports_to = m.id
+            LEFT JOIN subsidiaries sub ON e.company_id = sub.id
             ORDER BY e.id DESC
         `);
-        const formatted = rows.map(r => ({
-            id: r.id.toString(),
-            employee_code: r.employee_code,
-            name: `${r.first_name} ${r.last_name}`,
-            department: r.department_name || 'ไม่ระบุ',
-            position: r.position || '-',
-            joinDate: r.join_date,
-            status: r.status,
-            phone: r.phone || '-',
-            email: r.email || `${r.employee_code}@company.com`,
-            baseSalary: r.base_salary,
-            id_number: r.id_number,
-            reports_to: r.reports_to,
-            manager_name: r.manager_name || 'ไม่มี'
-        }));
-        res.json(formatted);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/employees', async (req, res) => {
     try {
-        const { employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number, reports_to } = req.body;
+        const { 
+            first_name, last_name, employee_code, department_id, company_id, position, 
+            join_date, shift_id, base_salary, phone, email, status, id_number,
+            spouse_allowance, children_count, parents_care_count, health_insurance, life_insurance,
+            pvf_rate, pvf_employer_rate, reports_to
+        } = req.body;
         
-        if (employee_code && !/^\d{5,7}$/.test(employee_code)) {
-            return res.status(400).json({ error: 'รหัสพนักงานต้องเป็นตัวเลข 5-7 หลัก' });
-        }
-
-        const code = employee_code || `EMP${Math.floor(1000 + Math.random() * 9000)}`;
-        const [result] = await pool.query(
-            `INSERT INTO employees (employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number, reports_to)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [code, first_name, last_name, department_id, position, join_date, status || 'active', base_salary || 0, phone || null, email || null, id_number || null, reports_to || null]
-        );
-        res.status(201).json({ id: result.insertId, message: 'Employee created' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+        const [result] = await pool.query(`
+            INSERT INTO employees (
+                first_name, last_name, employee_code, department_id, company_id, position, 
+                join_date, shift_id, base_salary, phone, email, status, id_number,
+                spouse_allowance, children_count, parents_care_count, health_insurance, life_insurance,
+                pvf_rate, pvf_employer_rate, reports_to
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            first_name, last_name, employee_code, department_id, company_id, position, 
+            join_date, shift_id, base_salary, phone, email, status || 'active', id_number,
+            spouse_allowance || 0, children_count || 0, parents_care_count || 0, 
+            health_insurance || 0, life_insurance || 0, pvf_rate || 0, pvf_employer_rate || 0, reports_to || null
+        ]);
+        res.status(201).json({ id: result.insertId });
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.put('/api/employees/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone, email, id_number, reports_to } = req.body;
+        const { 
+            first_name, last_name, employee_code, department_id, company_id, position, 
+            join_date, shift_id, base_salary, phone, email, status, id_number,
+            spouse_allowance, children_count, parents_care_count, health_insurance, life_insurance,
+            pvf_rate, pvf_employer_rate, reports_to
+        } = req.body;
         
-        if (employee_code && !/^\d{5,7}$/.test(employee_code)) {
-            return res.status(400).json({ error: 'รหัสพนักงานต้องเป็นตัวเลข 5-7 หลัก' });
-        }
-
-        const [result] = await pool.query(
-            `UPDATE employees SET employee_code=?, first_name=?, last_name=?, department_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?, reports_to=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-            [employee_code, first_name, last_name, department_id, position, join_date, status, base_salary, phone || null, email || null, id_number || null, reports_to || null, id]
-        );
-        if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
-        res.json({ message: 'Employee updated' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+        await pool.query(`
+            UPDATE employees SET 
+                first_name=?, last_name=?, employee_code=?, department_id=?, company_id=?, position=?, 
+                join_date=?, shift_id=?, base_salary=?, phone=?, email=?, status=?, id_number=?,
+                spouse_allowance=?, children_count=?, parents_care_count=?, health_insurance=?, life_insurance=?,
+                pvf_rate=?, pvf_employer_rate=?, reports_to=?
+            WHERE id = ?
+        `, [
+            first_name, last_name, employee_code, department_id, company_id, position, 
+            join_date, shift_id, base_salary, phone, email, status, id_number,
+            spouse_allowance, children_count, parents_care_count, health_insurance, life_insurance,
+            pvf_rate, pvf_employer_rate, reports_to, req.params.id
+        ]);
+        res.json({ message: 'Employee updated successfully' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.delete('/api/employees/:id', async (req, res) => {
@@ -772,10 +817,12 @@ app.get('/api/payroll', async (req, res) => {
         // ลองดึงจาก payroll_records ก่อน
         const [saved] = await pool.query(`
             SELECT pr.*, CONCAT(e.first_name, ' ', e.last_name) as name, e.employee_code,
-                   d.name as department, e.base_salary as emp_base_salary
+                    d.name as department, e.base_salary as emp_base_salary,
+                    s.name as company_name, s.address as company_address, s.tax_id as company_tax_id
             FROM payroll_records pr
             JOIN employees e ON pr.employee_id = e.id
             LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN subsidiaries s ON e.company_id = s.id
             WHERE pr.period_month = ? AND pr.period_year = ?
             ORDER BY e.id ASC
         `, [month, year]);
@@ -801,6 +848,9 @@ app.get('/api/payroll', async (req, res) => {
                 netSalary: parseFloat(r.net_salary),
                 status: r.status,
                 period: { month, year },
+                company_name: r.company_name,
+                company_address: r.company_address,
+                company_tax_id: r.company_tax_id,
             }));
             return res.json(result);
         }
@@ -817,9 +867,11 @@ app.get('/api/payroll', async (req, res) => {
             SELECT e.id, e.employee_code, CONCAT(e.first_name, ' ', e.last_name) as name,
                    d.name as department, e.base_salary, e.shift_id,
                    e.spouse_allowance, e.children_count, e.parents_care_count,
-                   e.health_insurance, e.life_insurance, e.pvf_rate, e.pvf_employer_rate
+                   e.health_insurance, e.life_insurance, e.pvf_rate, e.pvf_employer_rate,
+                   s.name as company_name, s.address as company_address, s.tax_id as company_tax_id
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN subsidiaries s ON e.company_id = s.id
             WHERE e.status = 'active'
         `);
 
@@ -906,6 +958,9 @@ app.get('/api/payroll', async (req, res) => {
                 status: 'draft',
                 period: { month, year },
                 isPreview: true,
+                company_name: e.company_name,
+                company_address: e.company_address,
+                company_tax_id: e.company_tax_id,
             };
         });
 
@@ -1526,6 +1581,17 @@ async function runMigrations() {
         `INSERT IGNORE INTO system_settings (id, company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave, late_penalty_per_minute, payroll_cutoff_date, diligence_allowance)
          VALUES (1, 'บริษัท ตัวอย่าง จำกัด', '0123456789012', '123 ถ.สุขุมวิท กรุงเทพฯ', 1, 1, 10.00, 25, 500.00)`,
 
+        `CREATE TABLE IF NOT EXISTS subsidiaries (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            tax_id VARCHAR(50),
+            address TEXT,
+            logo_path VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS company_id INT AFTER department_id`,
+        `ALTER TABLE employees ADD FOREIGN KEY IF NOT EXISTS (company_id) REFERENCES subsidiaries(id) ON DELETE SET NULL`,
         // 3. Incremental Migrations
         `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS diligence_allowance DECIMAL(10,2) DEFAULT 0.00`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS diligence_allowance DECIMAL(10,2) DEFAULT 0.00`,
