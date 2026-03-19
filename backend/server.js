@@ -182,32 +182,7 @@ app.get('/api/test', async (req, res) => {
     }
 });
 
-// ─────────────────────────────────────────────
-// 💡 AUDIT LOGGER
-// ─────────────────────────────────────────────
-async function logAudit(userId, action, targetTable, targetId, details) {
-    try {
-        await pool.query(
-            'INSERT INTO audit_logs (user_id, action, target_table, target_id, details) VALUES (?, ?, ?, ?, ?)',
-            [userId || 1, action, targetTable, targetId, JSON.stringify(details)]
-        );
-    } catch (err) {
-        console.error('Audit log error:', err.message);
-    }
-}
 
-// ─────────────────────────────────────────────
-// TEST ROUTE
-// ─────────────────────────────────────────────
-app.get('/api/test', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT 1 + 1 AS solution');
-        res.json({ message: 'Database connected successfully', data: rows });
-    } catch (error) {
-        console.error('Database connection failed:', error);
-        res.status(500).json({ error: 'Database connection failed' });
-    }
-});
 
 // ─────────────────────────────────────────────
 // DASHBOARD
