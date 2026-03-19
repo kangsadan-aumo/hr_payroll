@@ -363,6 +363,11 @@ app.get('/api/departments', async (req, res) => {
 app.post('/api/departments', async (req, res) => {
     try {
         const { name } = req.body;
+        // Check for existing department
+        const [existing] = await pool.query('SELECT id FROM departments WHERE LOWER(name) = LOWER(?)', [name]);
+        if (existing.length > 0) {
+            return res.status(400).json({ error: 'ชื่อแผนกนี้มีอยู่ในระบบแล้ว' });
+        }
         await pool.query('INSERT INTO departments (name) VALUES (?)', [name]);
         res.status(201).json({ message: 'Department created' });
     } catch (error) { res.status(500).json({ error: error.message }); }
@@ -492,8 +497,14 @@ app.post('/api/employees/import', async (req, res) => {
                     if (deptRows.length > 0) {
                         deptId = deptRows[0].id;
                     } else {
-                        const [newDept] = await pool.query('INSERT INTO departments (name) VALUES (?)', [emp.department]);
-                        deptId = newDept.insertId;
+                        // Check again with a lock or just handle existing
+                        const [checkDept] = await pool.query('SELECT id FROM departments WHERE name = ?', [emp.department]);
+                        if (checkDept.length > 0) {
+                            deptId = checkDept[0].id;
+                        } else {
+                            const [newDept] = await pool.query('INSERT INTO departments (name) VALUES (?)', [emp.department]);
+                            deptId = newDept.insertId;
+                        }
                     }
                 }
                 if (emp.id) {

@@ -144,8 +144,8 @@ export const Employees: React.FC = () => {
             setTimeout(() => {
                 inputRef.current?.focus();
             }, 0);
-        } catch (error) {
-            message.error('ไม่สามารถเพิ่มแผนกได้');
+        } catch (error: any) {
+            message.error(error.response?.data?.error || 'ไม่สามารถเพิ่มแผนกได้');
         }
     };
 
