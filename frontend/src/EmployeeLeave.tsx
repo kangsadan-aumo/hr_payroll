@@ -125,23 +125,6 @@ export const EmployeeLeave: React.FC<{ user: any }> = ({ user }) => {
         return <Tag color={color} icon={icon} style={{ borderRadius: 8, padding: '2px 10px' }}>{status}</Tag>;
     };
 
-    const columns = [
-        { title: 'ประเภท', dataIndex: 'leave_type_name', key: 'leave_type_name' },
-        { title: 'วันที่เริ่มต้น', dataIndex: 'start_date', key: 'start_date', render: (d: string) => dayjs(d).format('DD/MM/YYYY') },
-        { title: 'วันที่สิ้นสุด', dataIndex: 'end_date', key: 'end_date', render: (d: string) => dayjs(d).format('DD/MM/YYYY') },
-        { title: 'จำนวน (วัน)', dataIndex: 'total_days', key: 'total_days' },
-        { title: 'สถานะ', dataIndex: 'status', key: 'status', render: (s: string) => getStatusTag(s) },
-        {
-            title: 'จัดการ',
-            key: 'action',
-            render: (_: any, record: LeaveRequest) => (
-                (record.status === 'รอหัวหน้าอนุมัติ' || record.status === 'รอ hr อนุมัติ') && (
-                    <Button type="link" danger onClick={() => handleCancel(record.id)}>ยกเลิก</Button>
-                )
-            )
-        }
-    ];
-
     const isMobile = window.innerWidth < 768;
 
     return (
