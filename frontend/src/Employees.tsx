@@ -121,6 +121,7 @@ export const Employees: React.FC = () => {
     const [adminLoading, setAdminLoading] = useState(false);
     const [adminForm] = Form.useForm();
     const [disciplineForm] = Form.useForm();
+    const [accountForm] = Form.useForm();
 
     // Leave Quota states
     const [quotaModalOpen, setQuotaModalOpen] = useState(false);
@@ -550,6 +551,11 @@ export const Employees: React.FC = () => {
             contract_end_date: record.contract_end_date ? dayjs(record.contract_end_date) : null,
             notes: record.notes
         });
+        accountForm.setFieldsValue({
+            username: record.username || record.employee_code,
+            role: record.role || 'employee',
+            must_change_password: !!record.must_change_password
+        });
         fetchAdminData(record.id);
         setAdminDrawerVisible(true);
     };
@@ -619,6 +625,16 @@ export const Employees: React.FC = () => {
             fetchAdminData(selectedEmployeeForAdmin!.id);
         } catch (error) {
             message.error('บันทึกวินัยไม่สำเร็จ');
+        }
+    };
+
+    const handleAccountSave = async (values: any) => {
+        try {
+            await axios.put(`${API}/employees/${selectedEmployeeForAdmin?.id}/account`, values);
+            message.success('บันทึกข้อมูลบัญชีผู้ใช้สำเร็จ');
+            fetchData();
+        } catch (error: any) {
+            message.error(error.response?.data?.error || 'บันทึกข้อมูลบัญชีไม่สำเร็จ');
         }
     };
 
@@ -1001,6 +1017,64 @@ export const Employees: React.FC = () => {
                                 { title: 'รายละเอียด', dataIndex: 'description', key: 'desc' }
                             ]}
                         />
+                    </TabPane>
+                    <TabPane 
+                        tab={<span><SecurityScanOutlined /> บัญชีผู้ใช้งาน (User Account)</span>} 
+                        key="4"
+                    >
+                        <Alert 
+                            message="จัดการสิทธิ์การเข้าถึงระบบ" 
+                            description="แอดมินสามารถสร้างชื่อผู้ใช้และรหัสผ่านเริ่มต้นให้พนักงานได้ หากระบุรหัสผ่านใหม่ ระบบจะทำการอัปเดตให้ทันที" 
+                            type="warning" 
+                            showIcon 
+                            style={{ marginBottom: 24 }}
+                        />
+                        <Form form={accountForm} layout="vertical" onFinish={handleAccountSave}>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="username" label="ชื่อผู้ใช้ (Username)" rules={[{ required: true, message: 'กรุณากรอกชื่อผู้ใช้' }]}>
+                                        <Input prefix={<UserOutlined />} placeholder="รหัสพนักงาน หรือชื่อภาษาอังกฤษ" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="role" label="สิทธิ์การใช้งาน (Role)" rules={[{ required: true }]}>
+                                        <Select>
+                                            <Option value="admin">Admin (HR)</Option>
+                                            <Option value="supervisor">Supervisor (หัวหน้างาน)</Option>
+                                            <Option value="employee">Employee (พนักงานทั่วไป)</Option>
+                                        </Select>
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+
+                            <Form.Item 
+                                name="password" 
+                                label="รหัสผ่านใหม่ (New Password)" 
+                                help="เว้นว่างไว้หากไม่ต้องการเปลี่ยนรหัสผ่าน"
+                            >
+                                <Input.Password placeholder="ระบุรหัสผ่านใหม่" />
+                            </Form.Item>
+
+                            <Form.Item name="must_change_password" valuePropName="checked">
+                                <Button 
+                                    type={accountForm.getFieldValue('must_change_password') ? 'primary' : 'default'}
+                                    danger={!!accountForm.getFieldValue('must_change_password')}
+                                    onClick={() => accountForm.setFieldsValue({ must_change_password: !accountForm.getFieldValue('must_change_password') })}
+                                    icon={<WarningOutlined />}
+                                    style={{ width: '100%' }}
+                                >
+                                    {accountForm.getFieldValue('must_change_password') 
+                                      ? 'เปิดใช้งาน: บังคับให้พนักงานเปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งแรก'
+                                      : 'คลิกเพื่อบังคับให้เปลี่ยนรหัสผ่านเมื่อล็อกอิน (Force Change Password)'}
+                                </Button>
+                            </Form.Item>
+                            
+                            <Divider />
+                            
+                            <Button type="primary" htmlType="submit" icon={<SecurityScanOutlined />} block size="large">
+                                อัปเดตข้อมูลบัญชีและความปลอดภัย
+                            </Button>
+                        </Form>
                     </TabPane>
                 </Tabs>
                 </Spin>

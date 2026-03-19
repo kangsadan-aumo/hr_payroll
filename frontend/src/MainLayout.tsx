@@ -8,6 +8,7 @@ import {
     DollarOutlined,
     SettingOutlined,
     ImportOutlined,
+    ClockCircleOutlined,
     UserOutlined,
     LogoutOutlined,
     MenuUnfoldOutlined,
@@ -18,6 +19,7 @@ import {
     FileProtectOutlined,
     ApartmentOutlined,
     LaptopOutlined,
+    LockOutlined,
 } from '@ant-design/icons';
 import './MainLayout.css';
 
@@ -26,14 +28,17 @@ const { Title, Text } = Typography;
 
 interface MainLayoutProps {
     children: React.ReactNode;
+    user: any;
     activeMenu: string;
     onMenuClick: (key: string) => void;
 }
 
-export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, onMenuClick }) => {
+export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMenu, onMenuClick }) => {
     const [collapsed, setCollapsed] = useState(false);
 
-    const menuItems = [
+    const role = user?.role || 'admin';
+
+    const hrItems = [
         { key: 'dashboard', icon: <DashboardOutlined />, label: 'Dashboard (หน้าแรก)' },
         { key: 'import', icon: <ImportOutlined />, label: 'นำเข้าข้อมูลเข้า-ออกงาน' },
         { key: 'employees', icon: <TeamOutlined />, label: 'จัดการพนักงาน' },
@@ -49,12 +54,27 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, on
         { key: 'settings', icon: <SettingOutlined />, label: 'ตั้งค่าระบบ' },
     ];
 
+    const employeeItems = [
+        { key: 'emp-attendance', icon: <ClockCircleOutlined />, label: 'ลงเวลาเข้า-ออกงาน' },
+        { key: 'emp-leave', icon: <CalendarOutlined />, label: 'ทำเรื่องลา' },
+    ];
+
+    const supervisorItems = [
+        ...employeeItems,
+        { key: 'leave', icon: <AuditOutlined />, label: 'อนุมัติการลาลูกน้อง' },
+    ];
+
+    const menuItems = role === 'admin' || role === 'superadmin' ? hrItems : 
+                      (role === 'supervisor' ? supervisorItems : employeeItems);
+
     const userMenu: MenuProps = {
         items: [
             { key: 'profile', icon: <UserOutlined />, label: 'โปรไฟล์ส่วนตัว' },
+            { key: 'change-password', icon: <LockOutlined />, label: 'เปลี่ยนรหัสผ่าน' },
             { type: 'divider' },
             { key: 'logout', icon: <LogoutOutlined />, label: 'ออกจากระบบ', danger: true },
         ],
+        onClick: (e) => onMenuClick(e.key),
     };
 
     return (
@@ -117,8 +137,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, on
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         <Dropdown menu={userMenu} placement="bottomRight" arrow>
                             <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
-                                <Avatar style={{ backgroundColor: '#1890ff' }} icon={<UserOutlined />} />
-                                <Text strong>Admin HR</Text>
+                                <Avatar style={{ backgroundColor: role === 'admin' ? '#1890ff' : '#52c41a' }} icon={<UserOutlined />} />
+                                <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
+                                    <Text strong>{user?.name || `${user?.first_name} ${user?.last_name}`}</Text>
+                                    <Text type="secondary" style={{ fontSize: '12px' }}>{role.toUpperCase()}</Text>
+                                </div>
                             </div>
                         </Dropdown>
                     </div>

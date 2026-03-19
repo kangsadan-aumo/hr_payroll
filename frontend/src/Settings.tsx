@@ -183,6 +183,18 @@ export const Settings: React.FC = () => {
         } catch (error) { message.error('เกิดข้อผิดพลาดในการลบอายุงาน'); }
     };
 
+    const handleApplyRulesToAll = async () => {
+        setLoading(true);
+        try {
+            const res = await axios.post(`${API_BASE}/leave-rules/apply-to-all`);
+            message.success(res.data.message);
+        } catch (error: any) {
+            message.error(error.response?.data?.error || 'เกิดข้อผิดพลาดในการนำกฎไปใช้');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Subsidiaries
     const handleSaveSubsidiary = async (values: any) => {
         try {
@@ -500,7 +512,18 @@ export const Settings: React.FC = () => {
                         <div style={{ paddingLeft: 24, maxWidth: 800 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                                 <Title level={4}>วันหยุดพักผ่อนประจำปีตามอายุงาน</Title>
-                                <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingLeaveRuleId(null); leaveRuleForm.resetFields(); setIsLeaveRuleModalOpen(true); }}>เพิ่มเกณฑ์ใหม่</Button>
+                                <Space>
+                                    <Popconfirm 
+                                        title="นำกฎไปใช้กับทุกคน?" 
+                                        description="ระบบจะล้างโควตาพักร้อนเดิมของทุกคนและคำนวณใหม่ตามอายุงาน ยืนยันหรือไม่?"
+                                        onConfirm={handleApplyRulesToAll}
+                                        okText="ใช่, เริ่มเลย"
+                                        cancelText="ยกเลิก"
+                                    >
+                                        <Button icon={<FieldTimeOutlined />} type="dashed">คำนวณโควตาพนักงานทุกคนใหม่</Button>
+                                    </Popconfirm>
+                                    <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingLeaveRuleId(null); leaveRuleForm.resetFields(); setIsLeaveRuleModalOpen(true); }}>เพิ่มเกณฑ์ใหม่</Button>
+                                </Space>
                             </div>
                             <Table columns={leaveRuleColumns} dataSource={leaveRules} rowKey="id" pagination={false} bordered />
                         </div>

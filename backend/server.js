@@ -9,7 +9,34 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
+import nodemailer from 'nodemailer';
+import jwt from 'jsonwebtoken';
+
 dotenv.config();
+
+// EMAIL TRANSPORTER
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || '',
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: {
+        user: process.env.SMTP_USER || '',
+        pass: process.env.SMTP_PASS || '',
+    },
+});
+
+const sendEmail = async (to, subject, html) => {
+    if (!process.env.SMTP_HOST) {
+        console.log('--- Email Not Configured: Logging to Console ---');
+        console.log(`To: ${to}\nSubject: ${subject}\nBody: ${html}`);
+        return;
+    }
+    try {
+        await transporter.sendMail({ from: `"HR System" <${process.env.SMTP_USER}>`, to, subject, html });
+    } catch (err) {
+        console.error('Email error:', err);
+    }
+};
 
 const app = express();
 app.use(cors()); // อนุญาตให้ทุกโดเมน (Origins) เข้าถึงได้ ป้องกันปัญหา CORS บน Production
@@ -362,16 +389,16 @@ app.delete('/api/departments/:id', async (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/api/employees', async (req, res) => {
     try {
-        const [rows] = await pool.query(`
-            SELECT e.*, d.name as department_name, s.name as shift_name, s.start_time, s.end_time,
-                   sub.name as company_name
+        const [employees] = await pool.query(`
+            SELECT e.*, d.name AS department_name, c.name AS company_name,
+            m.first_name AS manager_name_first, m.last_name AS manager_name_last,
+            e.username, e.must_change_password
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
-            LEFT JOIN shifts s ON e.shift_id = s.id
-            LEFT JOIN subsidiaries sub ON e.company_id = sub.id
-            ORDER BY e.id DESC
+            LEFT JOIN subsidiaries c ON e.company_id = c.id
+            LEFT JOIN employees m ON e.reports_to = m.id
         `);
-        res.json(rows);
+        res.json(employees);
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -531,6 +558,19 @@ app.put('/api/employees/:id/leave-quotas', async (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/api/leaves/requests', async (req, res) => {
     try {
+        const { employee_id, role } = req.query;
+        let whereClause = 'WHERE 1=1';
+        let params = [];
+        
+        if (role === 'employee' && employee_id) {
+            whereClause += ' AND lr.employee_id = ?';
+            params.push(employee_id);
+        } else if (role === 'supervisor' && employee_id) {
+            // ดึงคำขอของลูกน้อง (reports_to) หรือของตัวเองถ้าต้องการ (แต่อันนี้เอาแค่ลูกน้องก่อน)
+            whereClause += ' AND e.reports_to = ?';
+            params.push(employee_id);
+        }
+
         const [rows] = await pool.query(`
             SELECT lr.*, l.name as leave_type_name, 
                    CONCAT(e.first_name, ' ', e.last_name) as employee_name,
@@ -539,8 +579,9 @@ app.get('/api/leaves/requests', async (req, res) => {
             JOIN employees e ON lr.employee_id = e.id
             JOIN leave_types l ON lr.leave_type_id = l.id
             LEFT JOIN departments d ON e.department_id = d.id
+            ${whereClause}
             ORDER BY lr.submitted_at DESC
-        `);
+        `, params);
         const formatted = rows.map(r => ({ ...r, id: r.id.toString(), total_days: parseFloat(r.total_days) }));
         res.json(formatted);
     } catch (error) {
@@ -551,11 +592,55 @@ app.get('/api/leaves/requests', async (req, res) => {
 app.post('/api/leaves/requests', async (req, res) => {
     try {
         const { employee_id, leave_type_id, start_date, end_date, total_days, reason } = req.body;
+        const approval_token = jwt.sign({ empId: employee_id, rand: Math.random() }, process.env.JWT_SECRET || 'hr-secret');
+        
+        // 1. บันทึกคำขอเบื้องต้น
         const [result] = await pool.query(
-            'INSERT INTO leave_requests (employee_id, leave_type_id, start_date, end_date, total_days, reason) VALUES (?, ?, ?, ?, ?, ?)',
-            [employee_id || 1, leave_type_id || 1, start_date, end_date, total_days, reason]
+            'INSERT INTO leave_requests (employee_id, leave_type_id, start_date, end_date, total_days, reason, status, approval_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [employee_id, leave_type_id, start_date, end_date, total_days, reason, 'รอหัวหน้าอนุมัติ', approval_token]
         );
-        res.status(201).json({ id: result.insertId.toString(), message: 'Leave request created' });
+        
+        // 2. ดึงข้อมูลพนักงานและหัวหน้า
+        const [[emp]] = await pool.query('SELECT e.first_name, e.last_name, s.first_name as s_first, s.last_name as s_last, s.email as s_email FROM employees e LEFT JOIN employees s ON e.reports_to = s.id WHERE e.id = ?', [employee_id]);
+        
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+        if (emp && emp.s_email) {
+            const approveLink = `${frontendUrl}/approve-leave?token=${approval_token}&action=approve&from=supervisor&id=${result.insertId}`;
+            const rejectLink = `${frontendUrl}/approve-leave?token=${approval_token}&action=reject&from=supervisor&id=${result.insertId}`;
+            
+            await sendEmail(emp.s_email, 'คำขออนุมัติการลา: ' + emp.first_name + ' ' + emp.last_name, `
+                <div style="font-family: Arial, sans-serif; padding: 20px;">
+                    <h2>คำขอการลาใหม่</h2>
+                    <p>พนักงาน: ${emp.first_name} ${emp.last_name}</p>
+                    <p>วันที่: ${start_date} ถึง ${end_date} (รวม ${total_days} วัน)</p>
+                    <p>เหตุผล: ${reason}</p>
+                    <hr/>
+                    <div style="margin-top: 20px;">
+                        <a href="${approveLink}" style="background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-right: 10px;">อนุมัติ</a>
+                        <a href="${rejectLink}" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">ปฏิเสธ</a>
+                    </div>
+                </div>
+            `);
+        } else {
+            // ไม่มีหัวหน้า ให้ส่งถึง HR โดยตรง และเปลี่ยนสถานะ
+            await pool.query('UPDATE leave_requests SET status = ? WHERE id = ?', ['รอ hr อนุมัติ', result.insertId]);
+            
+            const hrEmail = process.env.SMTP_USER; // Default to SMTP user for HR
+            const approveLink = `${frontendUrl}/approve-leave?token=${approval_token}&action=approve&from=hr&id=${result.insertId}`;
+            const rejectLink = `${frontendUrl}/approve-leave?token=${approval_token}&action=reject&from=hr&id=${result.insertId}`;
+            
+            await sendEmail(hrEmail, 'คำขออนุมัติการลา (ส่งตรงถึง HR): ' + emp.first_name + ' ' + emp.last_name, `
+                <p>พนักงานไม่มีระบุหัวหน้า คำขอส่งตรงถึง HR</p>
+                <p>พนักงาน: ${emp.first_name} ${emp.last_name}</p>
+                <p>วันที่: ${start_date} ถึง ${end_date} (รวม ${total_days} วัน)</p>
+                <div style="margin-top: 20px;">
+                    <a href="${approveLink}">อนุมัติ</a> | <a href="${rejectLink}">ปฏิเสธ</a>
+                </div>
+            `);
+        }
+        
+        res.status(201).json({ id: result.insertId.toString(), message: 'ส่งคำขอสำเร็จ' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -564,16 +649,71 @@ app.post('/api/leaves/requests', async (req, res) => {
 app.put('/api/leaves/requests/:id/status', async (req, res) => {
     try {
         const { id } = req.params;
-        const { status } = req.body;
-        const [result] = await pool.query(
-            'UPDATE leave_requests SET status = ?, approved_at=CURRENT_TIMESTAMP WHERE id = ?',
-            [status, id]
-        );
-        if (result.affectedRows === 0) return res.status(404).json({ error: 'Leave request not found' });
-        res.json({ message: `Leave request ${status}` });
+        const { status, from } = req.body; // status: 'approved' | 'rejected', from: 'supervisor' | 'hr'
+        
+        const [[leave]] = await pool.query('SELECT lr.*, e.first_name, e.last_name, e.email, e.reports_to FROM leave_requests lr JOIN employees e ON lr.employee_id = e.id WHERE lr.id = ?', [id]);
+        if (!leave) return res.status(404).json({ error: 'ไม่พบรายการลา' });
+        
+        let newStatus = leave.status;
+        let updateFields = [];
+        let params = [];
+
+        if (from === 'supervisor') {
+            if (status === 'approve') {
+                newStatus = 'รอ hr อนุมัติ';
+                updateFields.push('supervisor_approved_at = CURRENT_TIMESTAMP');
+                
+                // แจ้งเตือน HR ให้มาอนุมัติต่อ
+                const [hrs] = await pool.query("SELECT email FROM admins WHERE role IN ('admin', 'hr', 'superadmin') AND email IS NOT NULL AND email != ''");
+                const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+                const approveLink = `${frontendUrl}/approve-leave?token=${leave.approval_token}&action=approve&from=hr&id=${id}`;
+                const rejectLink = `${frontendUrl}/approve-leave?token=${leave.approval_token}&action=reject&from=hr&id=${id}`;
+                
+                for (const hr of hrs) {
+                    await sendEmail(hr.email, 'คำขออนุมัติการลา (ขั้นตอนสุดท้าย): ' + leave.first_name, `
+                        <p>หัวหน้าอนุมัติแล้ว และรอ HR อนุมัติขั้นสุดท้าย</p>
+                        <p>พนักงาน: ${leave.first_name} ${leave.last_name}</p>
+                        <hr/>
+                        <a href="${approveLink}">อนุมัติ</a> | <a href="${rejectLink}">ปฏิเสธ</a>
+                    `);
+                }
+            } else {
+                newStatus = 'ปฏิเสธโดยหัวหน้า';
+            }
+        } else if (from === 'hr') {
+            if (status === 'approve') {
+                newStatus = 'เสร็จสิ้น';
+                updateFields.push('hr_approved_at = CURRENT_TIMESTAMP');
+                updateFields.push('approved_at = CURRENT_TIMESTAMP');
+            } else {
+                newStatus = 'ยกเลิกโดยhr';
+            }
+        } else if (from === 'employee' && status === 'cancel') {
+            newStatus = 'ยกเลิกโดยพนักงาน';
+        }
+
+        params.push(newStatus, id);
+        await pool.query(`UPDATE leave_requests SET status = ? ${updateFields.length > 0 ? ', ' + updateFields.join(', ') : ''} WHERE id = ?`, params);
+        
+        // แจ้งผลพนักงาน
+        if (leave.email) {
+            await sendEmail(leave.email, 'แจ้งสถานะการลาของคุณ: ' + newStatus, `<p>การลาของคุณปรับสถานะเป็น: ${newStatus}</p>`);
+        }
+
+        res.json({ message: `อัปเดตสถานะเป็น ${newStatus} เรียบร้อย` });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+// GET verify leave token (for email approval links)
+app.get('/api/leaves/verify-token', async (req, res) => {
+    try {
+        const { token, id } = req.query;
+        const [[rows]] = await pool.query('SELECT status FROM leave_requests WHERE id = ? AND approval_token = ?', [id, token]);
+        if (!rows) return res.status(401).json({ error: 'Token ไม่ถูกต้องหรือรายการนี้ถูกดำเนินการไปแล้ว' });
+        res.json({ status: rows.status });
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 // ─────────────────────────────────────────────
@@ -728,6 +868,47 @@ app.post('/api/leave-rules', async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+app.post('/api/leave-rules/apply-to-all', async (req, res) => {
+    try {
+        // 1. Get rules sorted DESC by years to find highest match easily
+        const [rules] = await pool.query('SELECT * FROM leave_quota_rules ORDER BY tenure_years DESC');
+        
+        // 2. Find vacation leave type ID
+        const [types] = await pool.query("SELECT id FROM leave_types WHERE name LIKE '%พักร้อน%' OR name LIKE '%Annual%' OR name LIKE '%Vacation%' LIMIT 1");
+        if (types.length === 0) throw new Error('ไม่พบประเภทการลา "พักร้อน" หรือ "Annual Leave" ในระบบ');
+        const vTypeID = types[0].id;
+        
+        // 3. Get all active employees
+        const [employees] = await pool.query("SELECT id, join_date FROM employees WHERE status = 'active'");
+        
+        let updateCount = 0;
+        for (const emp of employees) {
+            if (!emp.join_date) continue;
+            
+            const joinDate = dayjs(emp.join_date);
+            const tenureYears = dayjs().diff(joinDate, 'year');
+            
+            // Find first rule where tenureYears >= rule.tenure_years
+            const matchedRule = rules.find(r => tenureYears >= r.tenure_years);
+            
+            if (matchedRule) {
+                // Upsert into employee_leave_quotas
+                await pool.query(
+                    `INSERT INTO employee_leave_quotas (employee_id, leave_type_id, quota_days) 
+                     VALUES (?, ?, ?) 
+                     ON DUPLICATE KEY UPDATE quota_days = ?`,
+                    [emp.id, vTypeID, matchedRule.vacation_days, matchedRule.vacation_days]
+                );
+                updateCount++;
+            }
+        }
+        
+        res.json({ message: `อัปเดตโควตาวันหยุดพนักงานสำเร็จ ${updateCount} คน` });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.put('/api/leave-rules/:id', async (req, res) => {
     try {
         await pool.query('UPDATE leave_quota_rules SET tenure_years=?, vacation_days=? WHERE id=?', [req.body.minYears, req.body.vacationDays, req.params.id]);
@@ -767,6 +948,53 @@ app.put('/api/leave-types/:id', async (req, res) => {
 app.delete('/api/leave-types/:id', async (req, res) => {
     try { await pool.query('DELETE FROM leave_types WHERE id=?', [req.params.id]); res.json({ message: 'Deleted' }); }
     catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─────────────────────────────────────────────
+// EMPLOYEE ACCOUNT & SECURITY
+// ─────────────────────────────────────────────
+
+// Admin sets account credentials
+app.put('/api/employees/:id/account', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { username, password, role, must_change_password } = req.body;
+        
+        let query = 'UPDATE employees SET username = ?, role = ?, must_change_password = ?';
+        let params = [username, role, must_change_password ? 1 : 0];
+        
+        if (password) {
+            query += ', password = ?';
+            params.push(password);
+        }
+        
+        query += ' WHERE id = ?';
+        params.push(id);
+        
+        await pool.query(query, params);
+        res.json({ message: 'อัปเดตข้อมูลบัญชีผู้ใช้สำเร็จ' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Employee changes their own password
+app.put('/api/employees/:id/change-password', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { currentPassword, newPassword } = req.body;
+        
+        // Check current password
+        const [[emp]] = await pool.query('SELECT password FROM employees WHERE id = ?', [id]);
+        if (!emp || emp.password !== currentPassword) {
+            return res.status(401).json({ error: 'รหัสผ่านเดิมไม่ถูกต้อง' });
+        }
+        
+        await pool.query('UPDATE employees SET password = ?, must_change_password = 0 WHERE id = ?', [newPassword, id]);
+        res.json({ message: 'เปลี่ยนรหัสผ่านสำเร็จ' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // ─────────────────────────────────────────────
@@ -1243,17 +1471,21 @@ app.get('/api/payroll/history', async (req, res) => {
 // 📥 ATTENDANCE IMPORT (CSV → DB with upsert)
 // ─────────────────────────────────────────────
 
-// GET ดึงข้อมูล attendance จาก DB พร้อมสรุปรายพนักงาน
+// GET ดึงข้อมูล attendance จาก DB
 app.get('/api/attendance', async (req, res) => {
     try {
-        const month = req.query.month ? String(req.query.month).padStart(2, '0') : null;
-        const year = req.query.year ? String(req.query.year) : null;
-
-        let whereClause = '';
-        const params = [];
+        const { month, year, employee_id, role } = req.query;
+        let whereClause = 'WHERE 1=1';
+        let params = [];
+        
         if (month && year) {
-            whereClause = `WHERE DATE_FORMAT(al.check_in_time, '%m') = ? AND DATE_FORMAT(al.check_in_time, '%Y') = ?`;
-            params.push(month, year);
+            whereClause += ` AND DATE_FORMAT(al.check_in_time, '%m') = ? AND DATE_FORMAT(al.check_in_time, '%Y') = ?`;
+            params.push(String(month).padStart(2, '0'), year);
+        }
+        
+        if (role === 'employee' && employee_id) {
+            whereClause += ' AND al.employee_id = ?';
+            params.push(employee_id);
         }
 
         const [rows] = await pool.query(`
@@ -1266,53 +1498,57 @@ app.get('/api/attendance', async (req, res) => {
             ${whereClause}
             ORDER BY al.check_in_time DESC
         `, params);
-
-        // สรุปรายพนักงาน
-        const summaryMap = {};
-        rows.forEach(r => {
-            const key = r.employee_code;
-            if (!summaryMap[key]) {
-                summaryMap[key] = {
-                    employeeId: r.employee_code,
-                    name: r.emp_name,
-                    department: r.department || 'ไม่ระบุ',
-                    workDays: 0,        // วันทำงานทั้งหมด (รวม เสาร์-อาทิตย์)
-                    weekdays: 0,        // จันทร์-ศุกร์
-                    weekends: 0,        // เสาร์-อาทิตย์
-                    onTimeDays: 0,      // มาตรงเวลา ไม่สาย
-                    lateCount: 0,       // มาสาย
-                    totalLateMinutes: 0,
-                };
-            }
-            const s = summaryMap[key];
-            s.workDays++;
-
-            // ตรวจสอบว่าเป็นวันหยุดสุดสัปดาห์หรือไม่
-            if (r.check_in_time) {
-                const day = new Date(r.check_in_time).getDay(); // 0=Sun, 6=Sat
-                if (day === 0 || day === 6) {
-                    s.weekends++;
-                } else {
-                    s.weekdays++;
-                }
-            }
-
-            if (r.status === 'late') {
-                s.lateCount++;
-                s.totalLateMinutes += parseInt(r.late_minutes || 0);
-            } else {
-                s.onTimeDays++; // ตรงเวลา (ไม่สาย)
-            }
-        });
-
-        res.json({
-            logs: rows,
-            summary: Object.values(summaryMap),
-            total: rows.length,
-        });
+        
+        res.json({ logs: rows });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+app.post('/api/attendance/check-in', async (req, res) => {
+    try {
+        const { employee_id } = req.body;
+        const today = dayjs().format('YYYY-MM-DD');
+        
+        // เช็คว่าเช็คอินไปยังวันนี้
+        const [[exists]] = await pool.query("SELECT id FROM attendance_logs WHERE employee_id = ? AND DATE(check_in_time) = ?", [employee_id, today]);
+        if (exists) return res.status(400).json({ error: 'วันนี้คุณได้บันทึกเวลาเข้างานไปแล้ว' });
+        
+        // เช็คเวลาสายจาก Shift
+        const [[emp]] = await pool.query("SELECT e.shift_id, s.start_time, s.late_allowance_minutes FROM employees e JOIN shifts s ON e.shift_id = s.id WHERE e.id = ?", [employee_id]);
+        
+        let status = 'on_time';
+        let lateMinutes = 0;
+        
+        if (emp && emp.start_time) {
+            const now = dayjs();
+            const shiftStart = dayjs(`${today} ${emp.start_time}`);
+            const diff = now.diff(shiftStart, 'minute');
+            if (diff > (emp.late_allowance_minutes || 0)) {
+                status = 'late';
+                lateMinutes = diff;
+            }
+        }
+        
+        await pool.query(
+            "INSERT INTO attendance_logs (employee_id, check_in_time, status, late_minutes) VALUES (?, NOW(), ?, ?)",
+            [employee_id, status, lateMinutes]
+        );
+        res.json({ message: 'ลงเวลาเข้างานเรียบร้อย' + (status === 'late' ? ` (สาย ${lateMinutes} นาที)` : '') });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/attendance/check-out', async (req, res) => {
+    try {
+        const { employee_id } = req.body;
+        const today = dayjs().format('YYYY-MM-DD');
+        const [[log]] = await pool.query("SELECT id FROM attendance_logs WHERE employee_id = ? AND DATE(check_in_time) = ? ORDER BY id DESC LIMIT 1", [employee_id, today]);
+        
+        if (!log) return res.status(400).json({ error: 'ไม่พบประวัติการลงเวลาเข้างานของวันนี้' });
+        
+        await pool.query("UPDATE attendance_logs SET check_out_time = NOW() WHERE id = ?", [log.id]);
+        res.json({ message: 'ลงเวลาออกงานเรียบร้อย' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 // POST นำเข้าข้อมูล attendance จาก CSV (upsert: ลบซ้ำแล้วใส่ใหม่)
@@ -2259,11 +2495,39 @@ runMigrations()
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { username, password } = req.body;
-        const [rows] = await pool.query('SELECT * FROM admins WHERE username = ? AND password = ?', [username, password]);
-        if (rows.length === 0) return res.status(401).json({ error: 'Username หรือ Password ไม่ถูกต้อง' });
-        const user = rows[0];
-        delete user.password;
-        res.json({ user, message: 'เข้าสู่ระบบสำเร็จ' });
+        
+        // 1. Check in admins table first
+        const [admins] = await pool.query('SELECT * FROM admins WHERE username = ? AND password = ?', [username, password]);
+        if (admins.length > 0) {
+            const user = admins[0];
+            delete user.password;
+            return res.json({ user, message: 'เข้าสู่ระบบสำเร็จ (Admin)' });
+        }
+        
+        // 2. Check in employees table
+        const [employees] = await pool.query('SELECT * FROM employees WHERE (username = ? OR employee_code = ?) AND password = ?', [username, username, password]);
+        if (employees.length > 0) {
+            const employee = employees[0];
+            delete employee.password;
+            
+            // Check if supervisor
+            const [[isBoss]] = await pool.query('SELECT COUNT(*) as subordinates FROM employees WHERE reports_to = ?', [employee.id]);
+            const role = isBoss.subordinates > 0 ? 'supervisor' : (employee.role || 'employee');
+            
+            return res.json({
+                message: 'เข้าสู่ระบบสำเร็จ',
+                user: {
+                    id: employee.id,
+                    username: employee.username,
+                    name: `${employee.first_name} ${employee.last_name}`,
+                    role: role,
+                    employee_code: employee.employee_code,
+                    must_change_password: !!employee.must_change_password
+                }
+            });
+        }
+
+        return res.status(401).json({ error: 'Username หรือ Password ไม่ถูกต้อง' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 

@@ -29,10 +29,15 @@ interface LeaveRequest {
     end_date: string;
     total_days: number;
     reason: string;
-    status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+    status: string;
 }
 
-export const Leave: React.FC = () => {
+interface LeaveProps {
+    role?: string;
+    user?: any;
+}
+
+export const Leave: React.FC<LeaveProps> = ({ role = 'admin', user }) => {
     const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
     const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
     const [employees, setEmployees] = useState<any[]>([]);
@@ -52,13 +57,23 @@ export const Leave: React.FC = () => {
         setLoading(true);
         try {
             const [leavesRes, typesRes, empRes] = await Promise.all([
-                axios.get(`${API_BASE}/leaves/requests`),
+                axios.get(`${API_BASE}/leaves/requests`, {
+                    params: {
+                        employee_id: user?.id,
+                        role: role
+                    }
+                }),
                 axios.get(`${API_BASE}/leave-types`),
                 axios.get(`${API_BASE}/employees`)
             ]);
+            const mappedEmployees = empRes.data.map((e: any) => ({
+                ...e,
+                name: `${e.first_name} ${e.last_name}`,
+                department: e.department_name || 'ไม่ระบุแผนก'
+            }));
             setLeaveRequests(leavesRes.data);
             setLeaveTypes(typesRes.data);
-            setEmployees(empRes.data);
+            setEmployees(mappedEmployees);
         } catch (error) {
             console.error('Error fetching data:', error);
             message.error('ไม่สามารถโหลดข้อมูลการลาได้');
@@ -114,15 +129,12 @@ export const Leave: React.FC = () => {
     };
 
     // Handle Status change (Approve / Reject)
-    const handleStatusUpdate = async (id: string, newStatus: 'approved' | 'rejected' | 'cancelled') => {
+    const handleStatusUpdate = async (id: string, newStatus: 'approve' | 'reject' | 'cancelled') => {
         try {
-            await axios.put(`${API_BASE}/leaves/requests/${id}/status`, { status: newStatus });
-            let statusText = '';
-            if (newStatus === 'approved') statusText = 'อนุมัติ';
-            else if (newStatus === 'rejected') statusText = 'ไม่อนุมัติ';
-            else statusText = 'ยกเลิก';
-            message.success(`อัปเดตสถานะเป็น ${statusText} เรียบร้อย`);
-            setLeaveRequests(prev => prev.map(req => req.id === id ? { ...req, status: newStatus } : req));
+            const from = (role === 'admin' || role === 'superadmin') ? 'hr' : 'supervisor';
+            await axios.put(`${API_BASE}/leaves/requests/${id}/status`, { status: newStatus, from });
+            message.success('ดำเนินการเรียบร้อย');
+            fetchData();
         } catch (error) {
             message.error('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
         }
@@ -136,32 +148,32 @@ export const Leave: React.FC = () => {
                     key: 'approve',
                     label: 'อนุมัติการลา',
                     icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-                    disabled: record.status === 'approved',
-                    onClick: () => handleStatusUpdate(record.id, 'approved')
+                    disabled: (record.status !== 'รอหัวหน้าอนุมัติ' && role === 'supervisor') || 
+                              (record.status !== 'รอ hr อนุมัติ' && role === 'admin'),
+                    onClick: () => handleStatusUpdate(record.id, 'approve')
                 },
                 {
                     key: 'reject',
                     label: 'ไม่อนุมัติ',
                     icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
-                    disabled: record.status === 'rejected' || record.status === 'cancelled',
-                    onClick: () => handleStatusUpdate(record.id, 'rejected')
+                    disabled: (record.status !== 'รอหัวหน้าอนุมัติ' && role === 'supervisor') || 
+                              (record.status !== 'รอ hr อนุมัติ' && role === 'admin'),
+                    onClick: () => handleStatusUpdate(record.id, 'reject')
                 },
                 {
                     type: 'divider'
                 },
                 {
                     key: 'cancel',
-                    label: 'ยกเลิกการลา (คืนวันลา)',
+                    label: 'ยกเลิกการลา',
                     icon: <RollbackOutlined style={{ color: '#faad14' }} />,
-                    disabled: record.status === 'cancelled',
+                    disabled: role !== 'admin',
                     danger: true,
                     onClick: () => {
                         Modal.confirm({
                             title: 'ยืนยันการยกเลิกการลา',
-                            content: 'ระบบจะเปลี่ยนสถานะเป็นยกเลิก และคืนจำนวนวันลาที่อนุมัติไปแล้วกลับเข้าโควตา (ถ้ามี)',
+                            content: 'ระบบจะเปลี่ยนสถานะเป็นยกเลิก คืนวันลา (ถ้ามี)',
                             onOk: () => handleStatusUpdate(record.id, 'cancelled'),
-                            okText: 'ยืนยันยกเลิก',
-                            cancelText: 'ปิด'
                         });
                     }
                 }
@@ -214,15 +226,14 @@ export const Leave: React.FC = () => {
             key: 'status',
             render: (status) => {
                 let color = 'default';
-                let text = status;
                 let icon = null;
 
-                if (status === 'approved') { color = 'success'; text = 'อนุมัติแล้ว'; icon = <CheckCircleOutlined />; }
-                else if (status === 'rejected') { color = 'error'; text = 'ไม่อนุมัติ'; icon = <CloseCircleOutlined />; }
-                else if (status === 'pending') { color = 'warning'; text = 'รอพิกิจารณา'; icon = <ClockCircleOutlined />; }
-                else if (status === 'cancelled') { color = 'default'; text = 'ยกเลิกแล้ว'; icon = <RollbackOutlined />; }
+                if (status === 'approved' || status === 'เสร็จสิ้น') { color = 'success'; icon = <CheckCircleOutlined />; }
+                else if (status === 'rejected' || status.includes('ปฏิเสธ') || status.includes('ยกเลิกโดยhr')) { color = 'error'; icon = <CloseCircleOutlined />; }
+                else if (status === 'pending' || status.includes('รอหัวหน้า') || status.includes('รอ hr')) { color = 'warning'; icon = <ClockCircleOutlined />; }
+                else if (status === 'cancelled' || status.includes('ยกเลิกโดยพนักงาน')) { color = 'default'; icon = <RollbackOutlined />; }
 
-                return <Tag color={color} icon={icon}>{text}</Tag>;
+                return <Tag color={color} icon={icon}>{status}</Tag>;
             }
         },
         {
