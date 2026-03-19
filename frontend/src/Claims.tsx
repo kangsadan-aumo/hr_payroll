@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select, Tag, Space, Card, Typography, message } from 'antd';
-import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE } from './config';
 import dayjs from 'dayjs';
@@ -25,6 +25,7 @@ export const Claims: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [employees, setEmployees] = useState<{id: string, name: string}[]>([]);
+    const [searchText, setSearchText] = useState('');
     const [form] = Form.useForm();
 
     const fetchClaims = async () => {
@@ -42,7 +43,10 @@ export const Claims: React.FC = () => {
     const fetchEmployees = async () => {
         try {
             const res = await axios.get(`${API_BASE}/employees`);
-            setEmployees(res.data.map((e: any) => ({ id: e.id, name: e.name })));
+            setEmployees(res.data.map((e: any) => ({
+                id: e.id,
+                name: `${e.first_name} ${e.last_name || ''} (${e.employee_code})`
+            })));
         } catch (err) {
             message.error('ไม่สามารถดึงข้อมูลพนักงานได้');
         }
@@ -87,6 +91,11 @@ export const Claims: React.FC = () => {
             message.error('ไม่สามารถลบข้อมูลได้');
         }
     };
+
+    const filteredClaims = claims.filter(c =>
+        c.employee_name?.toLowerCase().includes(searchText.toLowerCase()) ||
+        c.employee_code?.toLowerCase().includes(searchText.toLowerCase())
+    );
 
     const columns = [
         {
@@ -167,19 +176,28 @@ export const Claims: React.FC = () => {
     return (
         <div style={{ padding: '24px' }}>
             <Card>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                    <Title level={2}>สวัสดิการและเบิกจ่าย (Claims & Benefits)</Title>
-                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
-                        สร้างคำขอเบิกจ่าย
-                    </Button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: 12 }}>
+                    <Title level={2} style={{ margin: 0 }}>สวัสดิการและเบิกจ่าย (Claims & Benefits)</Title>
+                    <Space size="middle">
+                        <Input
+                            placeholder="ค้นหาชื่อ หรือรหัสพนักงาน"
+                            prefix={<SearchOutlined />}
+                            allowClear
+                            style={{ width: 250 }}
+                            onChange={e => setSearchText(e.target.value)}
+                        />
+                        <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
+                            สร้างคำขอเบิกจ่าย
+                        </Button>
+                    </Space>
                 </div>
 
-                <Table 
-                    columns={columns} 
-                    dataSource={claims} 
-                    rowKey="id" 
+                <Table
+                    columns={columns}
+                    dataSource={filteredClaims}
+                    rowKey="id"
                     loading={loading}
-                    pagination={{ pageSize: 10 }}
+                    pagination={{ pageSize: 15 }}
                 />
             </Card>
 

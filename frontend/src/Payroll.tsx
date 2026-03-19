@@ -9,8 +9,7 @@ import {
     DollarOutlined, SearchOutlined, PrinterOutlined, CheckCircleOutlined,
     FileExcelOutlined, WalletOutlined, BankOutlined, CalculatorOutlined,
     SyncOutlined, InfoCircleOutlined, EditOutlined, CarOutlined,
-    HistoryOutlined, DeleteOutlined, PlusOutlined, DownloadOutlined,
-    FilterOutlined, RollbackOutlined, UploadOutlined
+    HistoryOutlined, DeleteOutlined, PlusOutlined
 } from '@ant-design/icons';
 import { Tabs } from 'antd';
 import dayjs from 'dayjs';
@@ -662,6 +661,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                                         <Select value={otHelperRate} onChange={setOtHelperRate} style={{ width: '100%' }}>
                                             <Option value={1.5}>1.5</Option>
                                             <Option value={2.0}>2.0</Option>
+                                            <Option value={3.0}>3.0</Option>
                                         </Select>
                                     </Form.Item>
                                 </Col>

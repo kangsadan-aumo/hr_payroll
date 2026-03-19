@@ -110,7 +110,7 @@ export const GovReports: React.FC = () => {
                     rowKey="id"
                     columns={[
                         { title: 'รหัส', dataIndex: 'employee_code', key: 'code' },
-                        { title: 'ชื่อ-นามสกุล', dataIndex: 'name', key: 'name' },
+                        { title: 'ชื่อ-นามสกุล', key: 'name', render: (_, r: any) => `${r.first_name} ${r.last_name || ''}` },
                         { title: 'เลขประจำตัวประชาชน', dataIndex: 'id_number', key: 'id_no', render: (val) => val || <Tag color="error">ขาดข้อมูล</Tag> },
                         {
                             title: 'จัดการ',
