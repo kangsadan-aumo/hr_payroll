@@ -14,42 +14,37 @@ import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
-// EMAIL TRANSPORTER
+// EMAIL TRANSPORTER (สำหรับ Resend SMTP)
 const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
+    host: 'smtp.resend.com',
+    port: 465, // พอร์ต 465 เสถียรที่สุดสำหรับ Resend
     secure: true,
     auth: {
-        user: process.env.SMTP_USER || '',
-        pass: process.env.SMTP_PASS || '',
+        user: 'resend', // บังคับเป็นคำว่า resend
+        pass: process.env.SMTP_PASS || '', // ใส่ค่า re_... ใน Env
     },
-    tls: {
-        rejectUnauthorized: false,
-        minVersion: 'TLSv1.2' // ข้ามการตรวจสอบใบรับรอง (เพื่อแก้ปัญหายิบย่อยบนคลาวด์)
-    },
-    family: 4,
-    debug: true,
-    logger: true,
-    greetingTimeout: 20000,
-    connectionTimeout: 10000 // เพิ่มเวลาให้ระบบเชื่อมต่อหากช้า// บังคับใช้ IPv4 เพื่อแก้ปัญหา ENETUNREACH บน Render
+    family: 4
 });
 
 const sendEmail = async (to, subject, html) => {
-    if (!process.env.SMTP_HOST) {
-        console.log('--- Email Not Configured: Logging to Console ---');
-        console.log(`To: ${to}\nSubject: ${subject}\nBody: ${html}`);
-        return;
-    }
     try {
-        console.log(`[Email] Attempting to send to ${to}...`);
-        const info = await transporter.sendMail({ from: `"HR System" <${process.env.SMTP_USER}>`, to, subject, html });
-        console.log(`[Email] Success! Message ID: ${info.messageId}`);
+        console.log(`[Resend] Attempting to send to ${to}...`);
+        const info = await transporter.sendMail({
+            // หมายเหตุ: ถ้ายังไม่ยืนยันโดเมนใน Resend 
+            // ต้องส่งจาก 'onboarding@resend.dev' เท่านั้นครับ
+            from: 'onboarding@resend.dev',
+            to,
+            subject,
+            html
+        });
+        console.log(`[Resend] Success! ID: ${info.messageId}`);
         return info;
     } catch (err) {
-        console.error('[Email] CRITICAL ERROR:', err.message);
-        throw err; // Re-throw to handle in endpoint
+        console.error('[Resend] Error:', err.message);
+        throw err;
     }
 };
+
 
 const app = express();
 app.use(cors()); // อนุญาตให้ทุกโดเมน (Origins) เข้าถึงได้ ป้องกันปัญหา CORS บน Production
