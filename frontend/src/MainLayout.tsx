@@ -38,18 +38,20 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
     const role = user?.role || 'admin';
 
     const hrItems = [
+        { key: 'emp-attendance', icon: <ClockCircleOutlined />, label: 'ลงเวลาเข้า-ออกงาน' },
+        { key: 'emp-leave', icon: <CalendarOutlined />, label: 'ทำเรื่องลาส่วนตัว' },
         { key: 'dashboard', icon: <DashboardOutlined />, label: 'Dashboard (หน้าแรก)' },
-        { key: 'import', icon: <ImportOutlined />, label: 'นำเข้าข้อมูลเข้า-ออกงาน' },
-        { key: 'employees', icon: <TeamOutlined />, label: 'จัดการพนักงาน' },
+        { key: 'hr-calendar', icon: <CalendarOutlined style={{ color: '#ff4d4f' }} />, label: 'ปฏิทินงาน HR' },
+        { key: 'employees', icon: <TeamOutlined />, label: 'จัดการข้อมูลพนักงาน' },
+        { key: 'leave', icon: <CalendarOutlined />, label: 'อนุมัติการลา' },
+        { key: 'import', icon: <ImportOutlined />, label: 'นำเข้าข้อมูล เข้า-ออกงาน' },
+        { key: 'payroll', icon: <DollarOutlined />, label: 'จัดการเงินเดือน' },
+        { key: 'payroll-history', icon: <HistoryOutlined />, label: 'ประวัติเงินเดือน' },
+        { key: 'claims', icon: <AuditOutlined />, label: 'สวัสดิการและเบิกจ่าย' },
+        { key: 'gov-reports', icon: <FileProtectOutlined />, label: 'รายงานรัฐบาล (Compliance)' },
         { key: 'org-chart', icon: <ApartmentOutlined />, label: 'โครงสร้างองค์กร (Org Chart)' },
         { key: 'performance', icon: <BarChartOutlined />, label: 'การประเมินผล (Performance)' },
         { key: 'assets', icon: <LaptopOutlined />, label: 'ทรัพย์สิน & PDPA' },
-        { key: 'leave', icon: <CalendarOutlined />, label: 'อนุมัติการลา' },
-        { key: 'hr-calendar', icon: <CalendarOutlined style={{ color: '#ff4d4f' }} />, label: 'ปฏิทินงาน HR' },
-        { key: 'claims', icon: <AuditOutlined />, label: 'สวัสดิการและเบิกจ่าย' },
-        { key: 'payroll', icon: <DollarOutlined />, label: 'จัดการเงินเดือน' },
-        { key: 'payroll-history', icon: <HistoryOutlined />, label: 'ประวัติเงินเดือน' },
-        { key: 'gov-reports', icon: <FileProtectOutlined />, label: 'รายงานรัฐบาล (Compliance)' },
         { key: 'settings', icon: <SettingOutlined />, label: 'ตั้งค่าระบบ' },
     ];
 
@@ -63,7 +65,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
         { key: 'leave', icon: <AuditOutlined />, label: 'อนุมัติการลาลูกน้อง' },
     ];
 
-    const menuItems = role === 'admin' || role === 'superadmin' ? hrItems : 
+    const menuItems = (role === 'admin' || role === 'superadmin' || role === 'hr') ? hrItems : 
                       (role === 'supervisor' ? supervisorItems : employeeItems);
 
     const userMenu: MenuProps = {
@@ -74,7 +76,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
     };
 
     const isMobile = window.innerWidth <= 768;
-    const isEmployee = role !== 'admin' && role !== 'superadmin';
+    // For HR/Admin, if they are on mobile, show the employee layout (bottom nav, no sidebar)
+    const isEmployee = (role !== 'admin' && role !== 'superadmin' && role !== 'hr') || 
+                      (isMobile && (role === 'admin' || role === 'superadmin' || role === 'hr'));
 
     return (
         <Layout style={{ minHeight: '100vh' }}>
@@ -146,7 +150,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         <Dropdown menu={userMenu} placement="bottomRight" arrow>
                             <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
-                                <Avatar style={{ backgroundColor: role === 'admin' ? '#1890ff' : '#52c41a' }} icon={<UserOutlined />} />
+                                <Avatar style={{ backgroundColor: (role === 'admin' || role === 'superadmin' || role === 'hr') ? '#1890ff' : '#52c41a' }} icon={<UserOutlined />} />
                                 <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
                                     <Text strong>{user?.name || `${user?.first_name} ${user?.last_name}`}</Text>
                                     <Text type="secondary" style={{ fontSize: '12px' }}>{role.toUpperCase()}</Text>

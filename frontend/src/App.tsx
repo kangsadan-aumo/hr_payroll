@@ -36,7 +36,9 @@ function App() {
     const saved = localStorage.getItem('hr_user');
     if (saved) {
       const u = JSON.parse(saved);
-      if (u.role !== 'admin' && u.role !== 'superadmin') return 'emp-attendance';
+      const isMobile = window.innerWidth <= 768;
+      if (u.role !== 'admin' && u.role !== 'superadmin' && u.role !== 'hr') return 'emp-attendance';
+      if (isMobile) return 'emp-attendance';
     }
     return 'dashboard';
   });
@@ -48,7 +50,11 @@ function App() {
     localStorage.setItem('hr_user', JSON.stringify(userData));
     
     // Set default menu based on role
-    if (userData.role !== 'admin' && userData.role !== 'superadmin') {
+    const isMobile = window.innerWidth <= 768;
+    // Set default menu based on role and screen size
+    if (userData.role !== 'admin' && userData.role !== 'superadmin' && userData.role !== 'hr') {
+      setActiveMenu('emp-attendance');
+    } else if (isMobile) {
       setActiveMenu('emp-attendance');
     } else {
       setActiveMenu('dashboard');
@@ -84,7 +90,7 @@ function App() {
   const renderContent = () => {
     switch (activeMenu) {
       case 'dashboard':
-        if (role !== 'admin' && role !== 'superadmin') return <EmployeeAttendance user={user} />;
+        if (role !== 'admin' && role !== 'superadmin' && role !== 'hr') return <EmployeeAttendance user={user} />;
         return <Dashboard onNavigate={setActiveMenu} />;
       case 'import':
         return <DataImport />;
@@ -119,7 +125,7 @@ function App() {
         return <EmployeeLeave user={user} />;
         
       default:
-        if (role !== 'admin' && role !== 'superadmin') return <EmployeeAttendance user={user} />;
+        if (role !== 'admin' && role !== 'superadmin' && role !== 'hr') return <EmployeeAttendance user={user} />;
         return <Dashboard onNavigate={setActiveMenu} />;
     }
   };

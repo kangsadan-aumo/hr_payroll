@@ -5,7 +5,7 @@ import {
     CalendarOutlined,
     CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, MoreOutlined,
     UploadOutlined, SearchOutlined, FilterOutlined,
-    RollbackOutlined, PlusOutlined, DownloadOutlined
+    RollbackOutlined, PlusOutlined, DownloadOutlined, DeleteOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import isBetween from 'dayjs/plugin/isBetween';
@@ -129,15 +129,45 @@ export const Leave: React.FC<LeaveProps> = ({ role = 'admin', user }) => {
     };
 
     // Handle Status change (Approve / Reject)
-    const handleStatusUpdate = async (id: string, newStatus: 'approve' | 'reject' | 'cancelled') => {
+    const handleStatusUpdate = async (id: string, newStatus: 'approve' | 'reject' | 'cancel' | 'cancelled') => {
         try {
-            const from = (role === 'admin' || role === 'superadmin') ? 'hr' : 'supervisor';
-            await axios.put(`${API_BASE}/leaves/requests/${id}/status`, { status: newStatus, from });
+            let from = 'employee';
+            if (role === 'admin' || role === 'superadmin' || role === 'hr') {
+                from = 'hr';
+            } else if (role === 'supervisor') {
+                from = 'supervisor';
+            }
+
+            // มาตรฐาน backend ใช้ 'cancel'
+            const statusToSend = newStatus === 'cancelled' ? 'cancel' : newStatus;
+
+            await axios.put(`${API_BASE}/leaves/requests/${id}/status`, { 
+                status: statusToSend, 
+                from 
+            });
             message.success('ดำเนินการเรียบร้อย');
             fetchData();
         } catch (error) {
             message.error('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
         }
+    };
+    const handleDelete = async (id: string) => {
+        Modal.confirm({
+            title: 'ยืนยันการลบรายการ',
+            content: 'คุณแน่ใจหรือไม่ว่าต้องการลบรายการลานี้ถาวร? การดำเนินการนี้ไม่สามารถย้อนกลับได้',
+            okText: 'ลบ',
+            okType: 'danger',
+            cancelText: 'ยกเลิก',
+            onOk: async () => {
+                try {
+                    await axios.delete(`${API_BASE}/leaves/requests/${id}`);
+                    message.success('ลบรายการเรียบร้อย');
+                    fetchData();
+                } catch (error) {
+                    message.error('เกิดข้อผิดพลาดในการลบรายการ');
+                }
+            }
+        });
     };
 
     // Table Context Menu
@@ -149,7 +179,7 @@ export const Leave: React.FC<LeaveProps> = ({ role = 'admin', user }) => {
                     label: 'อนุมัติการลา',
                     icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
                     disabled: (record.status !== 'รอหัวหน้าอนุมัติ' && role === 'supervisor') || 
-                              (record.status !== 'รอ hr อนุมัติ' && role === 'admin'),
+                              (record.status !== 'รอ hr อนุมัติ' && (role === 'admin' || role === 'superadmin' || role === 'hr')),
                     onClick: () => handleStatusUpdate(record.id, 'approve')
                 },
                 {
@@ -157,7 +187,7 @@ export const Leave: React.FC<LeaveProps> = ({ role = 'admin', user }) => {
                     label: 'ไม่อนุมัติ',
                     icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
                     disabled: (record.status !== 'รอหัวหน้าอนุมัติ' && role === 'supervisor') || 
-                              (record.status !== 'รอ hr อนุมัติ' && role === 'admin'),
+                              (record.status !== 'รอ hr อนุมัติ' && (role === 'admin' || role === 'superadmin' || role === 'hr')),
                     onClick: () => handleStatusUpdate(record.id, 'reject')
                 },
                 {
@@ -167,17 +197,28 @@ export const Leave: React.FC<LeaveProps> = ({ role = 'admin', user }) => {
                     key: 'cancel',
                     label: 'ยกเลิกการลา',
                     icon: <RollbackOutlined style={{ color: '#faad14' }} />,
-                    disabled: role !== 'admin',
+                    disabled: !(
+                        (role === 'admin' || role === 'superadmin' || role === 'hr') || 
+                        (role === 'employee' && (record.status.includes('รอหัวหน้า') || record.status.includes('รอ hr') || record.status === 'pending'))
+                    ),
                     danger: true,
                     onClick: () => {
                         Modal.confirm({
                             title: 'ยืนยันการยกเลิกการลา',
-                            content: 'ระบบจะเปลี่ยนสถานะเป็นยกเลิก คืนวันลา (ถ้ามี)',
-                            onOk: () => handleStatusUpdate(record.id, 'cancelled'),
+                            content: 'คุณต้องการยกเลิกคำขอลาใช่หรือไม่?',
+                            onOk: () => handleStatusUpdate(record.id, 'cancel'),
                         });
                     }
+                },
+                (role === 'admin' || role === 'superadmin' || role === 'hr') && { type: 'divider' },
+                (role === 'admin' || role === 'superadmin' || role === 'hr') && {
+                    key: 'delete',
+                    label: 'ลบรายการลา',
+                    icon: <DeleteOutlined />,
+                    danger: true,
+                    onClick: () => handleDelete(record.id)
                 }
-            ]
+            ].filter(Boolean) as any
         };
     };
 
