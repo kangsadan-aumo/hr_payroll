@@ -691,42 +691,60 @@ app.post('/api/leaves/requests', async (req, res) => {
             [employee_id, leave_type_id, start_date, end_date, total_days, reason, 'รอหัวหน้าอนุมัติ', approval_token]
         );
 
-        // 2. ดึงข้อมูลพนักงานและหัวหน้า
-        const [[emp]] = await pool.query('SELECT e.first_name, e.last_name, s.first_name as s_first, s.last_name as s_last, s.email as s_email FROM employees e LEFT JOIN employees s ON e.reports_to = s.id WHERE e.id = ?', [employee_id]);
+        // 2. ดึงข้อมูลพนักงาน (รวมรหัสพนักงานและประเภทการลา)
+        const [[emp]] = await pool.query(`
+            SELECT e.first_name, e.last_name, e.employee_code, 
+                   s.first_name as s_first, s.last_name as s_last, s.email as s_email,
+                   lt.name as leave_type_name
+            FROM employees e 
+            LEFT JOIN employees s ON e.reports_to = s.id 
+            LEFT JOIN leave_types lt ON lt.id = ?
+            WHERE e.id = ?
+        `, [leave_type_id, employee_id]);
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const requestTime = dayjs().format('DD/MM/YYYY HH:mm น.');
 
         if (emp && emp.s_email) {
-            const approveLink = `${frontendUrl}/approve-leave?token=${approval_token}&action=approve&from=supervisor&id=${result.insertId}`;
-            const rejectLink = `${frontendUrl}/approve-leave?token=${approval_token}&action=reject&from=supervisor&id=${result.insertId}`;
+            const detailLink = `${frontendUrl}/approve-leave?token=${approval_token}&id=${result.insertId}&from=supervisor`;
 
-            await sendEmail(emp.s_email, 'คำขออนุมัติการลา: ' + emp.first_name + ' ' + emp.last_name, `
-                <div style="font-family: Arial, sans-serif; padding: 20px;">
-                    <h2>คำขอการลาใหม่</h2>
-                    <p>พนักงาน: ${emp.first_name} ${emp.last_name}</p>
-                    <p>วันที่: ${start_date} ถึง ${end_date} (รวม ${total_days} วัน)</p>
-                    <p>เหตุผล: ${reason}</p>
-                    <hr/>
-                    <div style="margin-top: 20px;">
-                        <a href="${approveLink}" style="background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-right: 10px;">อนุมัติ</a>
-                        <a href="${rejectLink}" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">ปฏิเสธ</a>
+            await sendEmail(emp.s_email, 'คำขอลา - ' + emp.first_name + ' ' + emp.last_name, `
+                <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 25px; color: #333; max-width: 600px; border: 1px solid #efefef; border-radius: 12px;">
+                    <h2 style="color: #000; margin-bottom: 25px; font-size: 24px;">มีคำขอลาใหม่</h2>
+                    
+                    <p style="margin: 12px 0;"><strong>พนักงาน:</strong> ${emp.first_name} ${emp.last_name} (${emp.employee_code})</p>
+                    <p style="margin: 12px 0;"><strong>ประเภทการลา:</strong> ${emp.leave_type_name || 'ไม่ระบุ'}</p>
+                    <p style="margin: 12px 0;"><strong>วันที่:</strong> ${start_date} ถึง ${end_date} (${total_days} วัน)</p>
+                    <p style="margin: 12px 0;"><strong>เหตุผล:</strong> ${reason || '-'}</p>
+                    <p style="margin: 12px 0; color: #666; font-size: 14px;"><strong>เวลาที่ส่งคำขอ:</strong> ${requestTime}</p>
+                    
+                    <div style="margin-top: 35px;">
+                        <a href="${detailLink}" style="background-color: #ff6f3c; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">ดูรายละเอียดและอนุมัติ (หัวหน้า)</a>
                     </div>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="color: #999; font-size: 12px;">นี่คือการแจ้งเตือนอัตโนมัติจากระบบ HR Payroll</p>
                 </div>
             `);
         } else {
-            // ไม่มีหัวหน้า ให้ส่งถึง HR โดยตรง และเปลี่ยนสถานะ
+            // ไม่มีหัวหน้า ให้ส่งถึง HR โดยตรง
             await pool.query('UPDATE leave_requests SET status = ? WHERE id = ?', ['รอ hr อนุมัติ', result.insertId]);
 
-            const hrEmail = process.env.SMTP_USER; // Default to SMTP user for HR
-            const approveLink = `${frontendUrl}/approve-leave?token=${approval_token}&action=approve&from=hr&id=${result.insertId}`;
-            const rejectLink = `${frontendUrl}/approve-leave?token=${approval_token}&action=reject&from=hr&id=${result.insertId}`;
+            const hrEmail = process.env.SMTP_USER;
+            const detailLink = `${frontendUrl}/approve-leave?token=${approval_token}&id=${result.insertId}&from=hr`;
 
-            await sendEmail(hrEmail, 'คำขออนุมัติการลา (ส่งตรงถึง HR): ' + emp.first_name + ' ' + emp.last_name, `
-                <p>พนักงานไม่มีระบุหัวหน้า คำขอส่งตรงถึง HR</p>
-                <p>พนักงาน: ${emp.first_name} ${emp.last_name}</p>
-                <p>วันที่: ${start_date} ถึง ${end_date} (รวม ${total_days} วัน)</p>
-                <div style="margin-top: 20px;">
-                    <a href="${approveLink}">อนุมัติ</a> | <a href="${rejectLink}">ปฏิเสธ</a>
+            await sendEmail(hrEmail, 'คำขออนุมัติการลา (ส่งตรงถึง HR) - ' + emp.first_name, `
+                <div style="font-family: sans-serif; padding: 25px; border: 1px solid #eee; border-radius: 12px;">
+                    <h2 style="color: #d44;">มีคำขอลาใหม่ (ส่งถึง HR โดยตรง)</h2>
+                    <p>พนักงานไม่มีระบุหัวหน้า คำขอจึงถูกส่งถึง HR เพื่อดำเนินการ</p>
+                    <hr/>
+                    <p><strong>พนักงาน:</strong> ${emp.first_name} ${emp.last_name} (${emp.employee_code})</p>
+                    <p><strong>ประเภทการลา:</strong> ${emp.leave_type_name || 'ไม่ระบุ'}</p>
+                    <p><strong>วันที่:</strong> ${start_date} ถึง ${end_date} (${total_days} วัน)</p>
+                    <p><strong>เหตุผล:</strong> ${reason || '-'}</p>
+                    
+                    <div style="margin-top: 30px;">
+                        <a href="${detailLink}" style="background-color: #1890ff; color: white; padding: 12px 25px; text-decoration: none; border-radius: 6px; font-weight: bold;">ดูรายละเอียดและอนุมัติ (HR)</a>
+                    </div>
                 </div>
             `);
         }
