@@ -19,7 +19,6 @@ import {
     FileProtectOutlined,
     ApartmentOutlined,
     LaptopOutlined,
-    LockOutlined,
 } from '@ant-design/icons';
 import './MainLayout.css';
 
@@ -69,9 +68,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
 
     const userMenu: MenuProps = {
         items: [
-            { key: 'profile', icon: <UserOutlined />, label: 'โปรไฟล์ส่วนตัว' },
-            { key: 'change-password', icon: <LockOutlined />, label: 'เปลี่ยนรหัสผ่าน' },
-            { type: 'divider' },
             { key: 'logout', icon: <LogoutOutlined />, label: 'ออกจากระบบ', danger: true },
         ],
         onClick: (e) => onMenuClick(e.key),
@@ -82,7 +78,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
 
     return (
         <Layout style={{ minHeight: '100vh' }}>
-            {/* Sider: Hide for employee on mobile */}
             {(!isMobile || !isEmployee) && (
                 <Sider
                     trigger={null}
@@ -165,7 +160,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
                     {children}
                 </Content>
                 
-                {/* Bottom Nav for Employee */}
+                {/* Bottom Navigation for Mobile (Employee Only) */}
                 {isEmployee && (
                     <div className="bottom-nav">
                         <div 
@@ -181,21 +176,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
                         >
                             <CalendarOutlined />
                             <span>การลา</span>
-                        </div>
-                        <div 
-                            className={`bottom-nav-item ${activeMenu === 'profile' ? 'active' : ''}`}
-                            onClick={() => onMenuClick('change-password')}
-                        >
-                            <LockOutlined />
-                            <span>รหัสผ่าน</span>
-                        </div>
-                        <div 
-                            className="bottom-nav-item"
-                            onClick={() => onMenuClick('logout')}
-                            style={{ color: '#ff4d4f' }}
-                        >
-                            <LogoutOutlined />
-                            <span>ออกจากระบบ</span>
                         </div>
                     </div>
                 )}
