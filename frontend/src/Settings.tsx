@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, TimePicker, DatePicker, Card, Col, Row, Select, message, Table, Space, Tag, Modal, Spin, Divider, Popconfirm, Tooltip } from 'antd';
-import { SaveOutlined, BankOutlined, FieldTimeOutlined, CalendarOutlined, SafetyCertificateOutlined, PlusOutlined, EditOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
+import { SaveOutlined, BankOutlined, FieldTimeOutlined, CalendarOutlined, PlusOutlined, EditOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axios from 'axios';
 import { API_BASE } from './config';
@@ -18,6 +18,8 @@ export const Settings: React.FC = () => {
     const [leaveRuleForm] = Form.useForm();
     const [leaveTypeForm] = Form.useForm();
     const [holidayForm] = Form.useForm();
+
+    const [activeTab, setActiveTab] = useState('1');
 
     // Data States
     const [shifts, setShifts] = useState<any[]>([]);
@@ -395,7 +397,7 @@ export const Settings: React.FC = () => {
             </div>
 
             <Card bordered={false} style={{ borderRadius: 8, minHeight: 'calc(100vh - 160px)' }}>
-                <Tabs defaultActiveKey="1" className="settings-tabs">
+                <Tabs activeKey={activeTab} onChange={setActiveTab} className="settings-tabs">
                     <TabPane tab={<span><BankOutlined /> ข้อมูลบริษัท & นโยบาย</span>} key="1">
                         <div style={{ maxWidth: 800, paddingLeft: 24 }}>
                             <Title level={4}>ข้อมูลบริษัท</Title>
@@ -530,8 +532,9 @@ export const Settings: React.FC = () => {
                         </div>
                     </TabPane>
 
-                    <TabPane tab={<span><CalendarOutlined /> นโยบายวันหยุดพักผ่อน</span>} key="3">
+                    <TabPane tab={<span><CalendarOutlined /> นโยบายการลา</span>} key="3">
                         <div style={{ paddingLeft: 24, maxWidth: 800 }}>
+                            {/* --- Vacation Rules --- */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                                 <Title level={4}>วันหยุดพักผ่อนประจำปีตามอายุงาน</Title>
                                 <Space>
@@ -542,19 +545,18 @@ export const Settings: React.FC = () => {
                                         okText="ใช่, เริ่มเลย"
                                         cancelText="ยกเลิก"
                                     >
-                                        <Button icon={<FieldTimeOutlined />} type="dashed">คำนวณโควตาพนักงานทุกคนใหม่</Button>
+                                        <Button icon={<FieldTimeOutlined />} type="dashed">คำนวณโควตาพักร้อนใหม่ทุกคน</Button>
                                     </Popconfirm>
                                     <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingLeaveRuleId(null); leaveRuleForm.resetFields(); setIsLeaveRuleModalOpen(true); }}>เพิ่มเกณฑ์ใหม่</Button>
                                 </Space>
                             </div>
                             <Table columns={leaveRuleColumns} dataSource={leaveRules} rowKey="id" pagination={false} bordered />
-                        </div>
-                    </TabPane>
 
-                    <TabPane tab={<span><SafetyCertificateOutlined /> ประเภทการลาอื่นๆ</span>} key="4">
-                        <div style={{ paddingLeft: 24, maxWidth: 800 }}>
+                            <Divider style={{ margin: '32px 0' }} />
+
+                            {/* --- Other Leave Types --- */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                                <Title level={4}>ประเภทการลาและการหักเงิน</Title>
+                                <Title level={4}>ประเภทการลาอื่นๆ (Sick, Personal, etc.)</Title>
                                 <Space>
                                     <Tooltip title="นำวันโควตาที่กำหนด (ต่อปี) ไปใช้กับพนักงานทุกคน">
                                         <Button 

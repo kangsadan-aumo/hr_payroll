@@ -78,7 +78,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, user, activeMe
     };
 
     const isMobile = window.innerWidth <= 768;
-    const isEmployee = role === 'employee';
+    const isEmployee = role !== 'admin' && role !== 'superadmin';
 
     return (
         <Layout style={{ minHeight: '100vh' }}>

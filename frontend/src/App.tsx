@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ConfigProvider, message } from 'antd';
 import thTH from 'antd/es/locale/th_TH';
 import dayjs from 'dayjs';
@@ -28,29 +28,27 @@ import { ChangePasswordModal } from './ChangePasswordModal';
 import './App.css';
 
 function App() {
-  const [user, setUser] = useState<any>(null);
-  const [activeMenu, setActiveMenu] = useState('dashboard');
+  const [user, setUser] = useState<any>(() => {
+    const saved = localStorage.getItem('hr_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [activeMenu, setActiveMenu] = useState<string>(() => {
+    const saved = localStorage.getItem('hr_user');
+    if (saved) {
+      const u = JSON.parse(saved);
+      if (u.role !== 'admin' && u.role !== 'superadmin') return 'emp-attendance';
+    }
+    return 'dashboard';
+  });
   const [payrollMonth, setPayrollMonth] = useState<{ month: number; year: number } | null>(null);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
-
-  useEffect(() => {
-    const savedUser = localStorage.getItem('hr_user');
-    if (savedUser) {
-      const parsedUser = JSON.parse(savedUser);
-      setUser(parsedUser);
-      // Default menu based on role if it was 'dashboard'
-      if (parsedUser.role === 'employee' && activeMenu === 'dashboard') {
-        setActiveMenu('emp-attendance');
-      }
-    }
-  }, []);
 
   const handleLoginSuccess = (userData: any) => {
     setUser(userData);
     localStorage.setItem('hr_user', JSON.stringify(userData));
     
     // Set default menu based on role
-    if (userData.role === 'employee') {
+    if (userData.role !== 'admin' && userData.role !== 'superadmin') {
       setActiveMenu('emp-attendance');
     } else {
       setActiveMenu('dashboard');
@@ -86,6 +84,7 @@ function App() {
   const renderContent = () => {
     switch (activeMenu) {
       case 'dashboard':
+        if (role !== 'admin' && role !== 'superadmin') return <EmployeeAttendance user={user} />;
         return <Dashboard onNavigate={setActiveMenu} />;
       case 'import':
         return <DataImport />;
@@ -119,8 +118,8 @@ function App() {
       case 'emp-leave':
         return <EmployeeLeave user={user} />;
         
-      case 'dashboard':
-        if (role === 'employee') return <EmployeeAttendance user={user} />;
+      default:
+        if (role !== 'admin' && role !== 'superadmin') return <EmployeeAttendance user={user} />;
         return <Dashboard onNavigate={setActiveMenu} />;
     }
   };
