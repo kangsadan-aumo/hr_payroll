@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     Row, Col, Card, Statistic, Typography, Table, Tag, Button, Space,
     Input, Select, DatePicker, message, Modal, Divider, Tooltip, Alert,
-    Drawer, Form, InputNumber
+    Drawer, Form, InputNumber, Popconfirm
 } from 'antd';
 import type { TableProps } from 'antd';
 import {
@@ -502,7 +502,11 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                                     { title: 'จำนวนเงิน', dataIndex: 'amount', key: 'amount', render: (a) => formatCurrency(a) },
                                     { title: 'หมายเหตุ', dataIndex: 'notes', key: 'notes' },
                                     { title: 'สถานะ', dataIndex: 'status', key: 'status', render: (s) => s === 'paid' ? <Tag color="blue">จ่ายแล้ว</Tag> : <Tag color="orange">ค้างจ่าย</Tag> },
-                                    { title: 'จัดการ', key: 'action', render: (_, r) => <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handleDeleteTrip(r.id)} disabled={r.status === 'paid'}>ลบ</Button> }
+                                    { title: 'จัดการ', key: 'action', render: (_, r) => (
+                                        <Popconfirm title="คุณแน่ใจหรือไม่ที่จะลบรายการนี้?" onConfirm={() => handleDeleteTrip(r.id)}>
+                                            <Button type="link" danger icon={<DeleteOutlined />}>ลบ</Button>
+                                        </Popconfirm>
+                                    )}
                                 ]}
                                 rowKey="id"
                                 pagination={{ pageSize: 10 }}
