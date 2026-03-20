@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, TimePicker, DatePicker, Card, Col, Row, Select, message, Table, Space, Tag, Modal, Spin, Divider, Popconfirm } from 'antd';
-import { SaveOutlined, BankOutlined, FieldTimeOutlined, CalendarOutlined, SafetyCertificateOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, TimePicker, DatePicker, Card, Col, Row, Select, message, Table, Space, Tag, Modal, Spin, Divider, Popconfirm, Tooltip } from 'antd';
+import { SaveOutlined, BankOutlined, FieldTimeOutlined, CalendarOutlined, SafetyCertificateOutlined, PlusOutlined, EditOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axios from 'axios';
 import { API_BASE } from './config';
@@ -262,6 +262,18 @@ export const Settings: React.FC = () => {
             message.success('ลบประเภทการลาสำเร็จ');
             fetchAllData();
         } catch (error) { message.error('เกิดข้อผิดพลาดในการลบประเภทการลา'); }
+    };
+
+    const handleSyncLeaveTypes = async () => {
+        setLoading(true);
+        try {
+            const res = await axios.post(`${API_BASE}/leave-types/sync-all`);
+            message.success(res.data.message);
+        } catch (error: any) {
+            message.error(error.response?.data?.error || 'เกิดข้อผิดพลาดในการซิงค์ข้อมูล');
+        } finally {
+            setLoading(false);
+        }
     };
 
     // Public Holidays
@@ -543,7 +555,23 @@ export const Settings: React.FC = () => {
                         <div style={{ paddingLeft: 24, maxWidth: 800 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                                 <Title level={4}>ประเภทการลาและการหักเงิน</Title>
-                                <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingLeaveTypeId(null); leaveTypeForm.resetFields(); setIsLeaveTypeModalOpen(true); }}>เพิ่มประเภทการลา</Button>
+                                <Space>
+                                    <Tooltip title="นำวันโควตาที่กำหนด (ต่อปี) ไปใช้กับพนักงานทุกคน">
+                                        <Button 
+                                            icon={<SyncOutlined />} 
+                                            onClick={() => {
+                                                Modal.confirm({
+                                                    title: 'ยืนยันการซิงค์โควตา',
+                                                    content: 'คุณต้องการนำวันลาต่อปี (Sick, Personal, etc.) ไปเริ่มใหม่ให้กับพนักงานทุกคนใช่หรือไม่?',
+                                                    onOk: handleSyncLeaveTypes
+                                                });
+                                            }}
+                                        >
+                                            ซิงค์วันลาให้พนักงานทุกคน
+                                        </Button>
+                                    </Tooltip>
+                                    <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingLeaveTypeId(null); leaveTypeForm.resetFields(); setIsLeaveTypeModalOpen(true); }}>เพิ่มประเภทการลา</Button>
+                                </Space>
                             </div>
                             <Table columns={leaveTypeColumns} dataSource={otherLeaves} rowKey="id" pagination={false} bordered />
                         </div>

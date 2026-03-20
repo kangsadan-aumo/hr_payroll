@@ -35,12 +35,27 @@ function App() {
 
   useEffect(() => {
     const savedUser = localStorage.getItem('hr_user');
-    if (savedUser) setUser(JSON.parse(savedUser));
+    if (savedUser) {
+      const parsedUser = JSON.parse(savedUser);
+      setUser(parsedUser);
+      // Default menu based on role if it was 'dashboard'
+      if (parsedUser.role === 'employee' && activeMenu === 'dashboard') {
+        setActiveMenu('emp-attendance');
+      }
+    }
   }, []);
 
   const handleLoginSuccess = (userData: any) => {
     setUser(userData);
     localStorage.setItem('hr_user', JSON.stringify(userData));
+    
+    // Set default menu based on role
+    if (userData.role === 'employee') {
+      setActiveMenu('emp-attendance');
+    } else {
+      setActiveMenu('dashboard');
+    }
+
     if (userData.must_change_password) {
       setPasswordModalVisible(true);
     }
@@ -104,8 +119,9 @@ function App() {
       case 'emp-leave':
         return <EmployeeLeave user={user} />;
         
-      default:
-        return <Dashboard />;
+      case 'dashboard':
+        if (role === 'employee') return <EmployeeAttendance user={user} />;
+        return <Dashboard onNavigate={setActiveMenu} />;
     }
   };
 

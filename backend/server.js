@@ -440,7 +440,39 @@ app.post('/api/employees', async (req, res) => {
             spouse_allowance || 0, children_count || 0, parents_care_count || 0, 
             health_insurance || 0, life_insurance || 0, pvf_rate || 0, pvf_employer_rate || 0, reports_to || null
         ]);
-        res.status(201).json({ id: result.insertId });
+
+        const newEmpId = result.insertId;
+
+        // --- Initialize Leave Quotas for the new employee ---
+        try {
+            // 1. Handle regular leave types (Sick, Personal, etc. using default days_per_year)
+            const [types] = await pool.query("SELECT id, name, days_per_year FROM leave_types WHERE name NOT LIKE '%พักร้อน%' AND name NOT LIKE '%Annual%' AND name NOT LIKE '%Vacation%'");
+            for (const type of types) {
+                await pool.query(
+                    "INSERT INTO employee_leave_quotas (employee_id, leave_type_id, quota_days) VALUES (?, ?, ?)",
+                    [newEmpId, type.id, parseFloat(type.days_per_year) || 0]
+                );
+            }
+
+            // 2. Handle Vacation leave type (based on tenure rules)
+            const [vacTypes] = await pool.query("SELECT id FROM leave_types WHERE name LIKE '%พักร้อน%' OR name LIKE '%Annual%' OR name LIKE '%Vacation%' LIMIT 1");
+            if (vacTypes.length > 0) {
+                const vTypeID = vacTypes[0].id;
+                const [rules] = await pool.query("SELECT * FROM leave_quota_rules ORDER BY tenure_years DESC");
+                const tenureYears = dayjs().diff(dayjs(join_date), 'year');
+                const matchedRule = rules.find(r => tenureYears >= r.tenure_years);
+                const vacQuota = matchedRule ? matchedRule.vacation_days : 0;
+                
+                await pool.query(
+                    "INSERT INTO employee_leave_quotas (employee_id, leave_type_id, quota_days) VALUES (?, ?, ?)",
+                    [newEmpId, vTypeID, vacQuota]
+                );
+            }
+        } catch (quotaErr) {
+            console.error('Failed to init leave quotas for new employee:', quotaErr);
+        }
+
+        res.status(201).json({ id: newEmpId });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -519,11 +551,30 @@ app.post('/api/employees/import', async (req, res) => {
                     }
                 }
                 const code = emp.employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
-                await pool.query(
-                    `INSERT INTO employees (employee_code, first_name, last_name, department_id, position, join_date, status, base_salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [code, emp.first_name, emp.last_name, deptId, emp.position, emp.join_date, emp.status || 'active', emp.base_salary || 0]
+                const [insertRes] = await pool.query(
+                    `INSERT INTO employees (employee_code, username, password, must_change_password, first_name, last_name, department_id, position, join_date, status, base_salary) VALUES (?, ?, 'Example123', 1, ?, ?, ?, ?, ?, ?, ?)`,
+                    [code, code, emp.first_name, emp.last_name, deptId, emp.position, emp.join_date, emp.status || 'active', emp.base_salary || 0]
                 );
                 created++;
+
+                // --- Auto Initialize Quotas for the newly imported employee ---
+                const newEmpId = insertRes.insertId;
+                try {
+                    // Sick/Personal/etc
+                    const [types] = await pool.query("SELECT id, days_per_year FROM leave_types WHERE name NOT LIKE '%พักร้อน%' AND name NOT LIKE '%Annual%' AND name NOT LIKE '%Vacation%'");
+                    for (const t of types) {
+                        await pool.query("INSERT IGNORE INTO employee_leave_quotas (employee_id, leave_type_id, quota_days) VALUES (?, ?, ?)", [newEmpId, t.id, parseFloat(t.days_per_year) || 0]);
+                    }
+                    // Vacation (Tenure based)
+                    const [vacTypes] = await pool.query("SELECT id FROM leave_types WHERE name LIKE '%พักร้อน%' OR name LIKE '%Annual%' OR name LIKE '%Vacation%' LIMIT 1");
+                    if (vacTypes.length > 0) {
+                        const vTypeID = vacTypes[0].id;
+                        const [rules] = await pool.query("SELECT * FROM leave_quota_rules ORDER BY tenure_years DESC");
+                        const tenureYears = dayjs().diff(dayjs(emp.join_date), 'year');
+                        const matchedRule = rules.find(r => tenureYears >= r.tenure_years);
+                        await pool.query("INSERT IGNORE INTO employee_leave_quotas (employee_id, leave_type_id, quota_days) VALUES (?, ?, ?)", [newEmpId, vTypeID, matchedRule ? matchedRule.vacation_days : 0]);
+                    }
+                } catch (qErr) { console.warn('Failed to init quotas in import for', code, qErr.message); }
             } catch (e) {
                 errors.push({ employee: emp.employee_code, error: e.message });
             }
@@ -977,6 +1028,33 @@ app.put('/api/leave-types/:id', async (req, res) => {
 app.delete('/api/leave-types/:id', async (req, res) => {
     try { await pool.query('DELETE FROM leave_types WHERE id=?', [req.params.id]); res.json({ message: 'Deleted' }); }
     catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/leave-types/sync-all', async (req, res) => {
+    try {
+        // 1. Get all leave types EXCEPT vacation ones (already handled by tenure rules)
+        const [types] = await pool.query("SELECT id, name, days_per_year FROM leave_types WHERE name NOT LIKE '%พักร้อน%' AND name NOT LIKE '%Annual%' AND name NOT LIKE '%Vacation%'");
+        
+        // 2. Get all active employees
+        const [employees] = await pool.query("SELECT id FROM employees WHERE status = 'active'");
+        
+        let updateCount = 0;
+        for (const type of types) {
+            const quota = parseFloat(type.days_per_year) || 0;
+            for (const emp of employees) {
+                await pool.query(
+                    `INSERT INTO employee_leave_quotas (employee_id, leave_type_id, quota_days) 
+                     VALUES (?, ?, ?) 
+                     ON DUPLICATE KEY UPDATE quota_days = ?`,
+                    [emp.id, type.id, quota, quota]
+                );
+                updateCount++;
+            }
+        }
+        res.json({ message: `ซิงค์โควตาวันลา (Sick, Personal, etc.) สำเร็จสำหรับ ${employees.length} พนักงาน` });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // ─────────────────────────────────────────────
