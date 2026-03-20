@@ -832,6 +832,16 @@ app.put('/api/leaves/requests/:id/status', async (req, res) => {
     }
 });
 
+app.delete('/api/leaves/requests/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM leave_requests WHERE id = ?', [id]);
+        res.json({ message: 'ลบรายการลาสำเร็จ' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // GET verify leave token (for email approval links)
 app.get('/api/leaves/verify-token', async (req, res) => {
     try {
