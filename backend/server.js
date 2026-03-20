@@ -758,6 +758,17 @@ app.put('/api/leaves/requests/:id/status', async (req, res) => {
                 newStatus = 'เสร็จสิ้น';
                 updateFields.push('hr_approved_at = CURRENT_TIMESTAMP');
                 updateFields.push('approved_at = CURRENT_TIMESTAMP');
+                
+                // --- Sync/Deduct from Employee Leave Quotas ---
+                try {
+                    await pool.query(
+                        'UPDATE employee_leave_quotas SET quota_days = quota_days - ? WHERE employee_id = ? AND leave_type_id = ?',
+                        [leave.total_days, leave.employee_id, leave.leave_type_id]
+                    );
+                } catch (quotaErr) {
+                    console.error('Failed to deduct quota:', quotaErr.message);
+                    // Continue anyway but log it
+                }
             } else {
                 newStatus = 'ยกเลิกโดยhr';
             }
@@ -2225,7 +2236,10 @@ async function runMigrations() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
         `DELETE t1 FROM leave_types t1 JOIN leave_types t2 WHERE t1.id > t2.id AND t1.name = t2.name`,
         `ALTER TABLE leave_types ADD UNIQUE (name)`,
-        `ALTER TABLE leave_requests MODIFY COLUMN status ENUM('pending', 'approved', 'rejected', 'cancelled') DEFAULT 'pending'`,
+        `ALTER TABLE leave_requests MODIFY COLUMN status VARCHAR(50) DEFAULT 'รอหัวหน้าอนุมัติ'`,
+        `ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS approval_token VARCHAR(255) AFTER reason`,
+        `ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS supervisor_approved_at TIMESTAMP NULL AFTER approved_at`,
+        `ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS hr_approved_at TIMESTAMP NULL AFTER supervisor_approved_at`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS username VARCHAR(50) UNIQUE AFTER employee_code`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS password VARCHAR(255) AFTER username`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'employee' AFTER password`,

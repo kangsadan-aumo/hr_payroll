@@ -60,9 +60,25 @@ export const EmployeeLeave: React.FC<{ user: any }> = ({ user }) => {
     const handleSubmit = async (values: any) => {
         setLoading(true);
         try {
-            const startDate = values.dates[0].format('YYYY-MM-DD');
-            const endDate = values.dates[1].format('YYYY-MM-DD');
-            const diff = values.dates[1].diff(values.dates[0], 'day') + 1;
+            let startDate, endDate, diff;
+            
+            if (values.dates) {
+                // From RangePicker (Desktop)
+                startDate = values.dates[0].format('YYYY-MM-DD');
+                endDate = values.dates[1].format('YYYY-MM-DD');
+                diff = values.dates[1].diff(values.dates[0], 'day') + 1;
+            } else {
+                // From Individual DatePickers (Mobile)
+                startDate = values.start_date.format('YYYY-MM-DD');
+                endDate = values.end_date.format('YYYY-MM-DD');
+                diff = values.end_date.diff(values.start_date, 'day') + 1;
+            }
+
+            if (diff <= 0) {
+                message.error('วันที่สิ้นสุดต้องไม่ก่อนหน้าวันที่เริ่ม');
+                setLoading(false);
+                return;
+            }
 
             await axios.post(`${API_BASE}/leaves/requests`, {
                 employee_id: user.id,
@@ -204,9 +220,20 @@ export const EmployeeLeave: React.FC<{ user: any }> = ({ user }) => {
                         </Select>
                     </Form.Item>
                     
-                    <Form.Item label="ระยะเวลา" name="dates" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]}>
-                        <RangePicker style={{ width: '100%', borderRadius: 8 }} size="large" />
-                    </Form.Item>
+                    {isMobile ? (
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                            <Form.Item label="เริ่มหยุดวันที่" name="start_date" rules={[{ required: true, message: 'กรุณาเลือกวันเริ่มต้น' }]}>
+                                <DatePicker style={{ width: '100%', borderRadius: 8 }} size="large" inputReadOnly />
+                            </Form.Item>
+                            <Form.Item label="ถึงวันที่" name="end_date" rules={[{ required: true, message: 'กรุณาเลือกวันสิ้นสุด' }]}>
+                                <DatePicker style={{ width: '100%', borderRadius: 8 }} size="large" inputReadOnly />
+                            </Form.Item>
+                        </Space>
+                    ) : (
+                        <Form.Item label="ระยะเวลา" name="dates" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]}>
+                            <RangePicker style={{ width: '100%', borderRadius: 8 }} size="large" />
+                        </Form.Item>
+                    )}
 
                     <Form.Item label="เหตุผล / หมายเหตุ" name="reason" rules={[{ required: true, message: 'กรุณากรอกเหตุผล' }]}>
                         <TextArea rows={4} placeholder="ระบุเหตุผลการลา..." style={{ borderRadius: 8 }} />
