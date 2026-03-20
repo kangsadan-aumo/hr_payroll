@@ -16,13 +16,13 @@ import { Resend } from 'resend';
 dotenv.config();
 
 // EMAIL ENGINE (Using Resend SDK for Bypass Port Restrictions)
-const resend = new Resend(process.env.SMTP_PASS || ''); 
+const resend = new Resend(process.env.SMTP_PASS || '');
 
 const sendEmail = async (to, subject, html) => {
     try {
         console.log(`[Resend SDK] Sending to ${to}...`);
         const { data, error } = await resend.emails.send({
-            from: 'onboarding@resend.dev', // หรือ domain ของคุณถ้ายืนยันแล้ว
+            from: 'gift.kangsadan@gmail.com', // หรือ domain ของคุณถ้ายืนยันแล้ว
             to: [to],
             subject: subject,
             html: html,
@@ -2369,7 +2369,7 @@ app.get('/api/settings/test-email', async (req, res) => {
         // ใช้เมลที่ได้รับจาก query หรือใช้ SMTP_USER เก่าที่เป็นเมลจริงๆ
         // หาก SMTP_USER เป็นคำว่า 'resend' ให้เปลี่ยนเป็นเมลที่คุณต้องการรับเมลทดสอบครับ
         const testUser = req.query.email || process.env.SMTP_USER;
-        
+
         if (!testUser || testUser === 'resend' || !testUser.includes('@')) {
             throw new Error('กรุณาระบุอีเมลผู้รับที่ถูกต้องในช่อง SMTP_USER หรือส่งผ่าน ?email=... ครับ');
         }
@@ -2793,8 +2793,8 @@ app.post('/api/auth/login', async (req, res) => {
             // Determine role: Prioritize 'hr', 'admin', 'superadmin' over 'supervisor'
             const [[isBoss]] = await pool.query('SELECT COUNT(*) as subordinates FROM employees WHERE reports_to = ?', [employee.id]);
             const baseRole = employee.role || 'employee';
-            const role = (baseRole === 'hr' || baseRole === 'admin' || baseRole === 'superadmin') 
-                ? baseRole 
+            const role = (baseRole === 'hr' || baseRole === 'admin' || baseRole === 'superadmin')
+                ? baseRole
                 : (isBoss.subordinates > 0 ? 'supervisor' : baseRole);
 
             return res.json({
