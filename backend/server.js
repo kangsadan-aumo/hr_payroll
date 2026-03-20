@@ -17,18 +17,20 @@ dotenv.config();
 // EMAIL TRANSPORTER
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
+    port: 465,
+    secure: true,
     auth: {
         user: process.env.SMTP_USER || '',
         pass: process.env.SMTP_PASS || '',
     },
     tls: {
-        rejectUnauthorized: false // ข้ามการตรวจสอบใบรับรอง (เพื่อแก้ปัญหายิบย่อยบนคลาวด์)
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1.2' // ข้ามการตรวจสอบใบรับรอง (เพื่อแก้ปัญหายิบย่อยบนคลาวด์)
     },
     family: 4,
     debug: true,
     logger: true,
+    greetingTimeout: 20000,
     connectionTimeout: 10000 // เพิ่มเวลาให้ระบบเชื่อมต่อหากช้า// บังคับใช้ IPv4 เพื่อแก้ปัญหา ENETUNREACH บน Render
 });
 
