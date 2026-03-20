@@ -11,36 +11,32 @@ import { fileURLToPath } from 'url';
 
 import nodemailer from 'nodemailer';
 import jwt from 'jsonwebtoken';
+import { Resend } from 'resend';
 
 dotenv.config();
 
-// EMAIL TRANSPORTER (สำหรับ Resend SMTP)
-const transporter = nodemailer.createTransport({
-    host: 'smtp.resend.com',
-    port: 465, // พอร์ต 465 เสถียรที่สุดสำหรับ Resend
-    secure: true,
-    auth: {
-        user: 'resend', // บังคับเป็นคำว่า resend
-        pass: process.env.SMTP_PASS || '', // ใส่ค่า re_... ใน Env
-    },
-    family: 4
-});
+// EMAIL ENGINE (Using Resend SDK for Bypass Port Restrictions)
+const resend = new Resend(process.env.SMTP_PASS || ''); 
 
 const sendEmail = async (to, subject, html) => {
     try {
-        console.log(`[Resend] Attempting to send to ${to}...`);
-        const info = await transporter.sendMail({
-            // หมายเหตุ: ถ้ายังไม่ยืนยันโดเมนใน Resend 
-            // ต้องส่งจาก 'onboarding@resend.dev' เท่านั้นครับ
-            from: 'onboarding@resend.dev',
-            to,
-            subject,
-            html
+        console.log(`[Resend SDK] Sending to ${to}...`);
+        const { data, error } = await resend.emails.send({
+            from: 'onboarding@resend.dev', // หรือ domain ของคุณถ้ายืนยันแล้ว
+            to: [to],
+            subject: subject,
+            html: html,
         });
-        console.log(`[Resend] Success! ID: ${info.messageId}`);
-        return info;
+
+        if (error) {
+            console.error('[Resend SDK] Error Logged:', error);
+            throw new Error(error.message);
+        }
+
+        console.log(`[Resend SDK] Success! ID: ${data?.id}`);
+        return data;
     } catch (err) {
-        console.error('[Resend] Error:', err.message);
+        console.error('[Resend SDK] Critical Error:', err.message);
         throw err;
     }
 };
@@ -2345,21 +2341,26 @@ app.post('/api/settings/holidays', async (req, res) => {
 // TEST EMAIL ENDPOINT
 app.get('/api/settings/test-email', async (req, res) => {
     try {
-        console.log('--- Manual Email Test Triggered ---');
-        const testUser = process.env.SMTP_USER;
-        if (!testUser) throw new Error('SMTP_USER is not defined in environment variables.');
+        console.log('--- Manual Email Test Triggered (Resend SDK) ---');
+        // ใช้เมลที่ได้รับจาก query หรือใช้ SMTP_USER เก่าที่เป็นเมลจริงๆ
+        // หาก SMTP_USER เป็นคำว่า 'resend' ให้เปลี่ยนเป็นเมลที่คุณต้องการรับเมลทดสอบครับ
+        const testUser = req.query.email || process.env.SMTP_USER;
+        
+        if (!testUser || testUser === 'resend' || !testUser.includes('@')) {
+            throw new Error('กรุณาระบุอีเมลผู้รับที่ถูกต้องในช่อง SMTP_USER หรือส่งผ่าน ?email=... ครับ');
+        }
 
-        await sendEmail(testUser, 'HR System: Test Email Connection', `
+        await sendEmail(testUser, 'HR System: Test Email Connection (SDK Version)', `
             <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-                <h2 style="color: #1890ff;">การทดสอบระบบอีเมลสำเร็จ! 🎉</h2>
-                <p>หากคุณได้รับข้อความนี้ แสดงว่าการตั้งค่า <b>SMTP</b> ของคุณถูกต้องแล้ว</p>
+                <h2 style="color: #1890ff;">การทดสอบระบบ Resend SDK สำเร็จ! 🎉</h2>
+                <p>หากคุณได้รับข้อความนี้ แสดงว่าการใช้ <b>Resend SDK</b> ผ่านพอร์ต 443 ทำงานได้แม้จะติด Firewall ครับ</p>
                 <hr/>
                 <p style="color: #8c8c8c; font-size: 12px;">ส่งจากระบบ Enterprise Leave Management</p>
             </div>
         `);
-        res.json({ message: `ส่งเมลทดสอบไปยัง ${testUser} เรียบร้อยแล้ว กรุณาตรวจสอบ Inbox` });
+        res.json({ message: `ส่งเมลทดสอบไปยัง ${testUser} เรียบร้อยแล้ว กรุณาตรวจสอบ Inbox/Junk` });
     } catch (error) {
-        console.error('Test Email Failed:', error.message);
+        console.error('Test Email Failed (SDK):', error.message);
         res.status(500).json({ error: `การทดสอบล้มเหลว: ${error.message}` });
     }
 });

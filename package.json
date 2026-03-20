@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "dayjs": "^1.11.19"
+    "dayjs": "^1.11.19",
+    "resend": "^6.9.4"
   }
 }
