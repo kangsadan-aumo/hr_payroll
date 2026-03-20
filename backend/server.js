@@ -32,9 +32,13 @@ const sendEmail = async (to, subject, html) => {
         return;
     }
     try {
-        await transporter.sendMail({ from: `"HR System" <${process.env.SMTP_USER}>`, to, subject, html });
+        console.log(`[Email] Attempting to send to ${to}...`);
+        const info = await transporter.sendMail({ from: `"HR System" <${process.env.SMTP_USER}>`, to, subject, html });
+        console.log(`[Email] Success! Message ID: ${info.messageId}`);
+        return info;
     } catch (err) {
-        console.error('Email error:', err);
+        console.error('[Email] CRITICAL ERROR:', err.message);
+        throw err; // Re-throw to handle in endpoint
     }
 };
 
@@ -2291,6 +2295,28 @@ app.post('/api/settings/holidays', async (req, res) => {
             return res.status(400).json({ error: 'มีวันหยุดในระบบสำหรับวันนี้แล้ว' });
         }
         res.status(500).json({ error: error.message });
+    }
+});
+
+// TEST EMAIL ENDPOINT
+app.get('/api/settings/test-email', async (req, res) => {
+    try {
+        console.log('--- Manual Email Test Triggered ---');
+        const testUser = process.env.SMTP_USER;
+        if (!testUser) throw new Error('SMTP_USER is not defined in environment variables.');
+        
+        await sendEmail(testUser, 'HR System: Test Email Connection', `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #1890ff;">การทดสอบระบบอีเมลสำเร็จ! 🎉</h2>
+                <p>หากคุณได้รับข้อความนี้ แสดงว่าการตั้งค่า <b>SMTP</b> ของคุณถูกต้องแล้ว</p>
+                <hr/>
+                <p style="color: #8c8c8c; font-size: 12px;">ส่งจากระบบ Enterprise Leave Management</p>
+            </div>
+        `);
+        res.json({ message: `ส่งเมลทดสอบไปยัง ${testUser} เรียบร้อยแล้ว กรุณาตรวจสอบ Inbox` });
+    } catch (error) {
+        console.error('Test Email Failed:', error.message);
+        res.status(500).json({ error: `การทดสอบล้มเหลว: ${error.message}` });
     }
 });
 

@@ -516,7 +516,23 @@ export const Settings: React.FC = () => {
                                 </Row>
 
                                 <Form.Item style={{ marginTop: 24 }}>
-                                    <Button type="primary" htmlType="submit" icon={<SaveOutlined />} size="large">บันทึกข้อมูลและนโยบาย</Button>
+                                    <Space size="middle">
+                                        <Button type="primary" htmlType="submit" icon={<SaveOutlined />} size="large">บันทึกข้อมูลและนโยบาย</Button>
+                                        <Button 
+                                            icon={<SyncOutlined />} 
+                                            onClick={async () => {
+                                                try {
+                                                    message.loading('กำลังส่งอีเมลทดสอบ...');
+                                                    await axios.get(`${API_BASE}/settings/test-email`);
+                                                    message.success('ส่งอีเมลทดสอบสำเร็จ! กรุณาเช็คเมล์ของคุณ');
+                                                } catch (err: any) {
+                                                    message.error(err.response?.data?.error || 'การส่งทดสอบล้มเหลว');
+                                                }
+                                            }}
+                                        >
+                                            ทดสอบการเชื่อมต่ออีเมล
+                                        </Button>
+                                    </Space>
                                 </Form.Item>
                             </Form>
                         </div>
