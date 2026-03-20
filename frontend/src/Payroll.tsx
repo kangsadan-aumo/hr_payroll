@@ -339,8 +339,8 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
         {
             title: 'รายรับอื่นๆ', key: 'earnings', align: 'right',
             render: (_, r) => (
-                <Tooltip title={`OT: ${formatCurrency(r.earnings.overtime)} | เบี้ยขยัน: ${formatCurrency(r.earnings.diligenceAllowance || 0)} | โบนัส: ${formatCurrency(r.earnings.bonus)}`}>
-                    <Text type="success">+{formatCurrency(r.earnings.overtime + r.earnings.bonus + (r.earnings.diligenceAllowance || 0))}</Text>
+                <Tooltip title={`OT: ${formatCurrency(r.earnings.overtime)} | เบี้ยขยัน: ${formatCurrency(r.earnings.diligenceAllowance || 0)} | โบนัส: ${formatCurrency(r.earnings.bonus)} | ค่าเที่ยว: ${formatCurrency(r.earnings.tripAllowance || 0)}`}>
+                    <Text type="success">+{formatCurrency(r.earnings.overtime + r.earnings.bonus + (r.earnings.diligenceAllowance || 0) + (r.earnings.tripAllowance || 0))}</Text>
                 </Tooltip>
             )
         },
@@ -575,6 +575,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                                 <Text strong style={{ display: 'block', marginBottom: 8 }}>รายได้ (Earnings)</Text>
                                 {[
                                     ['เงินเดือนพื้นฐาน', selectedEmployee.baseSalary],
+                                    ['ค่าเที่ยว', selectedEmployee.earnings.tripAllowance || 0],
                                     ['ค่าล่วงเวลา (OT)', selectedEmployee.earnings.overtime],
                                     ['เบี้ยขยัน', selectedEmployee.earnings.diligenceAllowance || 0],
                                     ['โบนัส', selectedEmployee.earnings.bonus],

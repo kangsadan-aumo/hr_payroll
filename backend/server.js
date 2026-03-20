@@ -23,7 +23,7 @@ const transporter = nodemailer.createTransport({
         user: process.env.SMTP_USER || '',
         pass: process.env.SMTP_PASS || '',
     },
-    family: 4
+    family: 4 // บังคับใช้ IPv4 เพื่อแก้ปัญหา ENETUNREACH บน Render
 });
 
 const sendEmail = async (to, subject, html) => {
@@ -88,6 +88,20 @@ function calculateSSO(baseSalary, settings = {}) {
     const max = parseFloat(settings.sso_max_amount || 750);
     // ประกันสังคม % ของเงินเดือน แต่ไม่เกินยอดสูงสุด
     return Math.min(Math.floor(baseSalary * rate), max);
+}
+
+// ─────────────────────────────────────────────
+// 💡 HELPER: สำหรับคำนวณช่วงวันที่ของรอบการจ่ายเงินเดือน
+// ─────────────────────────────────────────────
+function getPayrollDateRange(month, year, cutoffDay = 25) {
+    // If cutoff is 25:
+    // This month's payroll is from (Last Month 26th) to (This Month 25th)
+    const end = dayjs(`${year}-${String(month).padStart(2, '0')}-${cutoffDay}`);
+    const start = end.subtract(1, 'month').add(1, 'day');
+    return {
+        startDate: start.format('YYYY-MM-DD'),
+        endDate: end.format('YYYY-MM-DD')
+    };
 }
 
 // ─────────────────────────────────────────────
@@ -1196,6 +1210,7 @@ app.get('/api/payroll', async (req, res) => {
                     overtime: parseFloat(r.overtime_pay),
                     bonus: parseFloat(r.bonus),
                     diligenceAllowance: parseFloat(r.diligence_allowance || 0),
+                    tripAllowance: parseFloat(r.trip_allowance || 0),
                 },
                 deductions: {
                     tax: parseFloat(r.tax_deduction),
@@ -1203,6 +1218,7 @@ app.get('/api/payroll', async (req, res) => {
                     latePenalty: parseFloat(r.late_deduction),
                     unpaidLeave: parseFloat(r.leave_deduction),
                 },
+                trip_count: parseInt(r.trip_count || 0),
                 netSalary: parseFloat(r.net_salary),
                 status: r.status,
                 period: { month, year },
@@ -1234,30 +1250,41 @@ app.get('/api/payroll', async (req, res) => {
         `);
 
         // ดึง attendance และ OT
-        const monthStr = String(month).padStart(2, '0');
-        const yearStr = String(year);
+        const cutoffDay = settings.payroll_cutoff_date || 25;
+        const { startDate, endDate } = getPayrollDateRange(month, year, cutoffDay);
 
         const [attendanceLogs] = await pool.query(`
             SELECT employee_id, SUM(late_minutes) as total_late_minutes,
                    COUNT(*) as work_days
             FROM attendance_logs
-            WHERE DATE_FORMAT(check_in_time, '%m') = ? AND DATE_FORMAT(check_in_time, '%Y') = ?
+            WHERE check_in_time BETWEEN ? AND ?
             GROUP BY employee_id
-        `, [monthStr, yearStr]);
+        `, [startDate + ' 00:00:00', endDate + ' 23:59:59']);
         const attendanceMap = {};
         attendanceLogs.forEach(a => { attendanceMap[a.employee_id] = a; });
 
         const [otLogs] = await pool.query(`
             SELECT employee_id, multiplier, SUM(hours) as total_hours
             FROM overtime_requests
-            WHERE status = 'approved' AND DATE_FORMAT(date, '%m') = ? AND DATE_FORMAT(date, '%Y') = ?
+            WHERE status = 'approved' AND date BETWEEN ? AND ?
             GROUP BY employee_id, multiplier
-        `, [monthStr, yearStr]);
+        `, [startDate, endDate]);
         const otMap = {};
         otLogs.forEach(o => {
             if (!otMap[o.employee_id]) otMap[o.employee_id] = {};
             otMap[o.employee_id][o.multiplier] = parseFloat(o.total_hours);
         });
+
+        // ดึงค่าเที่ยวสำหรับ Preview
+        const [trips] = await pool.query(`
+            SELECT employee_id, SUM(amount) as trip_total, COUNT(*) as trip_count
+            FROM trip_logs
+            WHERE (status = 'unpaid' OR payroll_id IS NULL OR payroll_id IN (SELECT id FROM payroll_records WHERE period_month=? AND period_year=?))
+              AND trip_date BETWEEN ? AND ?
+            GROUP BY employee_id
+        `, [month, year, startDate, endDate]);
+        const tripMap = {};
+        trips.forEach(t => { tripMap[t.employee_id] = t; });
 
         // ดึง unpaid leave
         const [unpaidLeaves] = await pool.query(`
@@ -1265,9 +1292,9 @@ app.get('/api/payroll', async (req, res) => {
             FROM leave_requests lr
             JOIN leave_types lt ON lr.leave_type_id = lt.id
             WHERE lt.is_unpaid = 1 AND lr.status = 'approved'
-              AND DATE_FORMAT(lr.start_date, '%m') = ? AND DATE_FORMAT(lr.start_date, '%Y') = ?
+              AND lr.start_date BETWEEN ? AND ?
             GROUP BY lr.employee_id
-        `, [monthStr, yearStr]);
+        `, [startDate, endDate]);
         const leaveMap = {};
         unpaidLeaves.forEach(l => { leaveMap[l.employee_id] = l; });
 
@@ -1309,10 +1336,19 @@ app.get('/api/payroll', async (req, res) => {
                 name: e.name,
                 department: e.department || 'ไม่ระบุ',
                 baseSalary,
-                earnings: { overtime: totalOT, bonus: 0, diligenceAllowance: earnedDiligence, ot1_5_pay, ot2_pay, ot3_pay },
+                earnings: { 
+                    overtime: totalOT, 
+                    bonus: 0, 
+                    diligenceAllowance: earnedDiligence, 
+                    tripAllowance: tripMap[e.id] ? parseFloat(tripMap[e.id].trip_total || 0) : 0,
+                    ot1_5_pay, 
+                    ot2_pay, 
+                    ot3_pay 
+                },
                 deductions: { tax: taxDeduction, socialSecurity: ssoDeduction, latePenalty, unpaidLeave: unpaidLeaveDeduction, pvfEmployee },
                 pvfEmployer,
-                netSalary: baseSalary + totalOT + earnedDiligence - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee,
+                trip_count: tripMap[e.id] ? parseInt(tripMap[e.id].trip_count || 0) : 0,
+                netSalary: baseSalary + totalOT + earnedDiligence + (tripMap[e.id] ? parseFloat(tripMap[e.id].trip_total || 0) : 0) - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee,
                 status: 'draft',
                 period: { month, year },
                 isPreview: true,
@@ -1356,21 +1392,24 @@ app.post('/api/payroll/calculate', async (req, res) => {
         `);
 
         // Fetch Data Maps
+        const cutoffDay = settings.payroll_cutoff_date || 25;
+        const { startDate, endDate } = getPayrollDateRange(month, year, cutoffDay);
+
         const [attendanceLogs] = await pool.query(`
             SELECT employee_id, SUM(late_minutes) as total_late_minutes
             FROM attendance_logs
-            WHERE DATE_FORMAT(check_in_time, '%m') = ? AND DATE_FORMAT(check_in_time, '%Y') = ?
+            WHERE check_in_time BETWEEN ? AND ?
             GROUP BY employee_id
-        `, [monthStr, yearStr]);
+        `, [startDate + ' 00:00:00', endDate + ' 23:59:59']);
         const attendanceMap = {};
         attendanceLogs.forEach(a => { attendanceMap[a.employee_id] = a; });
 
         const [otLogs] = await pool.query(`
             SELECT employee_id, multiplier, SUM(hours) as total_hours
             FROM overtime_requests
-            WHERE status = 'approved' AND DATE_FORMAT(date, '%m') = ? AND DATE_FORMAT(date, '%Y') = ?
+            WHERE status = 'approved' AND date BETWEEN ? AND ?
             GROUP BY employee_id, multiplier
-        `, [monthStr, yearStr]);
+        `, [startDate, endDate]);
         const otMap = {};
         otLogs.forEach(o => {
             if (!otMap[o.employee_id]) otMap[o.employee_id] = {};
@@ -1380,10 +1419,10 @@ app.post('/api/payroll/calculate', async (req, res) => {
         const [claims] = await pool.query(`
             SELECT employee_id, SUM(amount) as total_claims
             FROM claims
-            WHERE status = 'approved' AND payroll_id IS NULL
-              AND DATE_FORMAT(receipt_date, '%m') = ? AND DATE_FORMAT(receipt_date, '%Y') = ?
+            WHERE status = 'approved' AND (payroll_id IS NULL OR payroll_id IN (SELECT id FROM payroll_records WHERE period_month=? AND period_year=?))
+              AND receipt_date BETWEEN ? AND ?
             GROUP BY employee_id
-        `, [monthStr, yearStr]);
+        `, [month, year, startDate, endDate]);
         const claimsMap = {};
         claims.forEach(c => { claimsMap[c.employee_id] = c; });
 
@@ -1392,19 +1431,19 @@ app.post('/api/payroll/calculate', async (req, res) => {
             FROM leave_requests lr
             JOIN leave_types lt ON lr.leave_type_id = lt.id
             WHERE lt.is_unpaid = 1 AND lr.status = 'approved'
-              AND DATE_FORMAT(lr.start_date, '%m') = ? AND DATE_FORMAT(lr.start_date, '%Y') = ?
+              AND lr.start_date BETWEEN ? AND ?
             GROUP BY lr.employee_id
-        `, [monthStr, yearStr]);
+        `, [startDate, endDate]);
         const leaveMap = {};
         unpaidLeaves.forEach(l => { leaveMap[l.employee_id] = l; });
 
         const [trips] = await pool.query(`
             SELECT employee_id, COUNT(*) as trip_count, SUM(amount) as trip_total
             FROM trip_logs
-            WHERE (status = 'unpaid' OR payroll_id IS NULL)
-              AND DATE_FORMAT(trip_date, '%m') = ? AND DATE_FORMAT(trip_date, '%Y') = ?
+            WHERE (status = 'unpaid' OR payroll_id IS NULL OR payroll_id IN (SELECT id FROM payroll_records WHERE period_month=? AND period_year=?))
+              AND trip_date BETWEEN ? AND ?
             GROUP BY employee_id
-        `, [monthStr, yearStr]);
+        `, [month, year, startDate, endDate]);
         const tripMap = {};
         trips.forEach(t => { tripMap[t.employee_id] = t; });
 
@@ -2261,6 +2300,7 @@ async function runMigrations() {
         `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS sso_rate DECIMAL(5, 4) DEFAULT 0.05`,
         `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS sso_max_amount DECIMAL(10, 2) DEFAULT 750.00`,
         `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS default_password VARCHAR(255) DEFAULT 'Example123'`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS payroll_cutoff_date INT DEFAULT 25`,
     ];
     for (const sql of migrations) {
         try {
