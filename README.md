@@ -43,12 +43,10 @@
 ### ✨ แนวคิดในการออกแบบ
 - ออกแบบระบบแบบ Role-based (HR / Manager / Employee)
 - เน้น UI ที่ใช้งานง่าย ลดความซับซ้อนของข้อมูล HR
-- ใช้ Dashboard และ Data Visualization เพื่อช่วยในการตัดสินใจ
+- ใช้ Dashboard และ Data Visualization
 - รองรับการใช้งานทั้ง Mobile และ Desktop (Responsive Design)
 - ออกแบบ Workflow ให้ชัดเจน เช่น การอนุมัติการลาแบบหลายขั้นตอน
 ### 🚀 จุดเด่นของโปรเจค
-- พัฒนาระบบเองทั้งหมดตั้งแต่ต้นจนจบ (End-to-End)
-- ครอบคลุมทั้ง Frontend, Backend และ UI Design
 - รองรับการใช้งานจริงในองค์กร (Real-world Use Case)
 ### 🛠️ Tech Stack  
 - Frontend: React, Ant Design  
